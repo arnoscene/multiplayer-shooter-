@@ -729,6 +729,10 @@ wss.on('connection', (ws) => {
             type: 'floorsUpdate',
             floors: gameState.floors
           });
+          sendToClient(ws, {
+            type: 'buildingsUpdate',
+            buildings: gameState.buildings
+          });
         }, 100);
 
         // Notify other players
@@ -1259,6 +1263,100 @@ setInterval(() => {
         cp.captureProgress[playerId] = Math.max(0, cp.captureProgress[playerId] - 1);
         if (cp.captureProgress[playerId] === 0) {
           delete cp.captureProgress[playerId];
+        }
+      });
+    }
+  });
+}, 100); // Run every 100ms
+
+// Building capture zone game loop
+setInterval(() => {
+  gameState.buildings.forEach(building => {
+    // Check building integrity - lose ownership if too damaged
+    if (building.ownerId && building.integrity < 40) {
+      console.log(`Building ${building.id} lost due to low integrity (${building.integrity}%)`);
+      building.ownerId = null;
+      building.ownerName = null;
+      building.captureProgress = {};
+      broadcast({
+        type: 'buildingLost',
+        buildingId: building.id,
+        reason: 'destroyed'
+      });
+    }
+
+    // Count alive players in capture zone
+    const playersInZone = Array.from(gameState.players.values()).filter(player => {
+      const dx = player.x - building.captureZone.x;
+      const dy = player.y - building.captureZone.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      return dist < building.captureZone.radius && player.health > 0;
+    });
+
+    if (playersInZone.length > 0) {
+      playersInZone.forEach(player => {
+        // Initialize progress for this player
+        if (!building.captureProgress[player.id]) {
+          building.captureProgress[player.id] = 0;
+        }
+
+        // If building is owned by someone else, must neutralize first
+        if (building.ownerId && building.ownerId !== player.id) {
+          building.captureProgress[player.id] = Math.min(100, building.captureProgress[player.id] + 1); // Slower when contesting
+
+          // Neutralize owner's progress
+          if (building.captureProgress[building.ownerId] > 0) {
+            building.captureProgress[building.ownerId] = Math.max(0, building.captureProgress[building.ownerId] - 2);
+          }
+
+          // If owner's progress hits 0, building becomes neutral
+          if (building.captureProgress[building.ownerId] === 0) {
+            building.ownerId = null;
+            building.ownerName = null;
+            broadcast({
+              type: 'buildingNeutralized',
+              buildingId: building.id,
+              contesterId: player.id
+            });
+          }
+        } else {
+          // Normal capture (neutral or already owned by this player)
+          building.captureProgress[player.id] = Math.min(100, building.captureProgress[player.id] + 2); // 2% per tick = 50 seconds total
+
+          // Capture complete!
+          if (building.captureProgress[player.id] >= 100 && building.ownerId !== player.id) {
+            building.ownerId = player.id;
+            building.ownerName = player.name || player.id;
+            building.captureProgress = { [player.id]: 100 }; // Reset other players' progress
+
+            broadcast({
+              type: 'buildingCaptured',
+              buildingId: building.id,
+              ownerId: player.id,
+              ownerName: building.ownerName
+            });
+
+            console.log(`Player ${building.ownerName} captured ${building.id}!`);
+          }
+        }
+
+        // Send progress update
+        broadcast({
+          type: 'buildingCaptureProgress',
+          buildingId: building.id,
+          playerId: player.id,
+          progress: building.captureProgress[player.id],
+          ownerId: building.ownerId
+        });
+      });
+    } else {
+      // Decay progress when no one is in zone
+      Object.keys(building.captureProgress).forEach(playerId => {
+        if (playerId !== building.ownerId) { // Don't decay owner's progress
+          building.captureProgress[playerId] = Math.max(0, building.captureProgress[playerId] - 0.5);
+          if (building.captureProgress[playerId] === 0) {
+            delete building.captureProgress[playerId];
+          }
         }
       });
     }

@@ -433,6 +433,7 @@
         // Terrain and block types
         let terrain = [];
         let floors = [];
+        let buildings = []; // Building capture zones
         let currentSpeedModifier = 1.0;
 
         // Weapon types
@@ -912,6 +913,45 @@
                     case 'floorsUpdate':
                         floors = data.floors;
                         console.log(`Received ${floors.length} floor tiles from server`);
+                        break;
+
+                    case 'buildingsUpdate':
+                        buildings = data.buildings;
+                        console.log(`Received ${buildings.length} buildings from server`);
+                        break;
+
+                    case 'buildingCaptured':
+                        const capturedBuilding = buildings.find(b => b.id === data.buildingId);
+                        if (capturedBuilding) {
+                            capturedBuilding.ownerId = data.ownerId;
+                            capturedBuilding.ownerName = data.ownerName;
+                            console.log(`${data.ownerName} captured ${data.buildingId}!`);
+                        }
+                        break;
+
+                    case 'buildingNeutralized':
+                        const neutralBuilding = buildings.find(b => b.id === data.buildingId);
+                        if (neutralBuilding) {
+                            neutralBuilding.ownerId = null;
+                            neutralBuilding.ownerName = null;
+                        }
+                        break;
+
+                    case 'buildingLost':
+                        const lostBuilding = buildings.find(b => b.id === data.buildingId);
+                        if (lostBuilding) {
+                            lostBuilding.ownerId = null;
+                            lostBuilding.ownerName = null;
+                        }
+                        break;
+
+                    case 'buildingCaptureProgress':
+                        const progressBuilding = buildings.find(b => b.id === data.buildingId);
+                        if (progressBuilding) {
+                            if (!progressBuilding.captureProgress) progressBuilding.captureProgress = {};
+                            progressBuilding.captureProgress[data.playerId] = data.progress;
+                            progressBuilding.ownerId = data.ownerId;
+                        }
                         break;
 
                     case 'obstacleDestroyed':
@@ -1893,6 +1933,57 @@
                         ctx.textAlign = 'left';
                     }
                 }
+            });
+
+            // Draw building capture zones
+            buildings.forEach(building => {
+                const zone = building.captureZone;
+
+                // Determine color based on ownership
+                let zoneColor;
+                let zoneName = '';
+                if (building.ownerId) {
+                    if (building.ownerId === playerId) {
+                        zoneColor = 'rgba(0, 255, 0, 0.2)'; // Green for owned
+                        zoneName = `Your Building`;
+                    } else {
+                        zoneColor = 'rgba(255, 0, 0, 0.2)'; // Red for enemy
+                        zoneName = `${building.ownerName}'s Building`;
+                    }
+                } else {
+                    zoneColor = 'rgba(200, 200, 200, 0.15)'; // Gray for neutral
+                    zoneName = 'Neutral Building';
+                }
+
+                // Draw capture zone circle
+                ctx.fillStyle = zoneColor;
+                ctx.beginPath();
+                ctx.arc(zone.x, zone.y, zone.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Draw zone border
+                ctx.strokeStyle = building.ownerId === playerId ? '#00ff00' : (building.ownerId ? '#ff0000' : '#888888');
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // Draw capture progress arc if someone is capturing
+                if (building.captureProgress && myPlayer) {
+                    const myProgress = building.captureProgress[playerId] || 0;
+                    if (myProgress > 0) {
+                        ctx.strokeStyle = '#00ff00';
+                        ctx.lineWidth = 6;
+                        ctx.beginPath();
+                        ctx.arc(zone.x, zone.y, zone.radius + 5, -Math.PI / 2, (-Math.PI / 2) + (Math.PI * 2 * myProgress / 100));
+                        ctx.stroke();
+                    }
+                }
+
+                // Draw ownership label
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 14px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(zoneName, zone.x, zone.y - zone.radius - 10);
+                ctx.textAlign = 'left';
             });
 
             // Draw pickups
