@@ -3,6 +3,8 @@ const WebSocket = require('ws');
 const express = require('express');
 const http = require('http');
 const path = require('path');
+const { generateTerrain, generateRoads, isGrassland } = require('./terrain');
+const { generateBuildings } = require('./buildings');
 
 const app = express();
 
@@ -40,118 +42,6 @@ function generatePlayerId() {
   return 'player_' + Math.random().toString(36).substr(2, 9);
 }
 
-// Simple Perlin-like noise generator
-function createNoise() {
-  const permutation = [];
-  for (let i = 0; i < 256; i++) permutation[i] = i;
-
-  // Shuffle
-  for (let i = 255; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [permutation[i], permutation[j]] = [permutation[j], permutation[i]];
-  }
-
-  const p = [...permutation, ...permutation];
-
-  function fade(t) {
-    return t * t * t * (t * (t * 6 - 15) + 10);
-  }
-
-  function lerp(t, a, b) {
-    return a + t * (b - a);
-  }
-
-  function grad(hash, x, y) {
-    const h = hash & 15;
-    const u = h < 8 ? x : y;
-    const v = h < 4 ? y : h === 12 || h === 14 ? x : 0;
-    return ((h & 1) === 0 ? u : -u) + ((h & 2) === 0 ? v : -v);
-  }
-
-  return function noise(x, y) {
-    const X = Math.floor(x) & 255;
-    const Y = Math.floor(y) & 255;
-
-    x -= Math.floor(x);
-    y -= Math.floor(y);
-
-    const u = fade(x);
-    const v = fade(y);
-
-    const a = p[X] + Y;
-    const b = p[X + 1] + Y;
-
-    return lerp(v,
-      lerp(u, grad(p[a], x, y), grad(p[b], x - 1, y)),
-      lerp(u, grad(p[a + 1], x, y - 1), grad(p[b + 1], x - 1, y - 1))
-    );
-  };
-}
-
-// BSP room generator
-class BSPNode {
-  constructor(x, y, width, height) {
-    this.x = x;
-    this.y = y;
-    this.width = width;
-    this.height = height;
-    this.leftChild = null;
-    this.rightChild = null;
-    this.room = null;
-  }
-
-  split(minRoomSize = 40) {
-    if (this.leftChild || this.rightChild) return false;
-
-    let splitHorizontal = Math.random() > 0.5;
-
-    if (this.width > this.height && this.width / this.height >= 1.25) {
-      splitHorizontal = false;
-    } else if (this.height > this.width && this.height / this.width >= 1.25) {
-      splitHorizontal = true;
-    }
-
-    const max = (splitHorizontal ? this.height : this.width) - minRoomSize;
-    if (max <= minRoomSize) return false;
-
-    const split = minRoomSize + Math.floor(Math.random() * (max - minRoomSize));
-
-    if (splitHorizontal) {
-      this.leftChild = new BSPNode(this.x, this.y, this.width, split);
-      this.rightChild = new BSPNode(this.x, this.y + split, this.width, this.height - split);
-    } else {
-      this.leftChild = new BSPNode(this.x, this.y, split, this.height);
-      this.rightChild = new BSPNode(this.x + split, this.y, this.width - split, this.height);
-    }
-
-    return true;
-  }
-
-  createRooms() {
-    if (this.leftChild || this.rightChild) {
-      if (this.leftChild) this.leftChild.createRooms();
-      if (this.rightChild) this.rightChild.createRooms();
-    } else {
-      // Create room with padding
-      const padding = 10;
-      this.room = {
-        x: this.x + padding,
-        y: this.y + padding,
-        width: this.width - padding * 2,
-        height: this.height - padding * 2
-      };
-    }
-  }
-
-  getLeaves() {
-    if (!this.leftChild && !this.rightChild) return [this];
-    const leaves = [];
-    if (this.leftChild) leaves.push(...this.leftChild.getLeaves());
-    if (this.rightChild) leaves.push(...this.rightChild.getLeaves());
-    return leaves;
-  }
-}
-
 function broadcast(data, excludeClient = null) {
   wss.clients.forEach(client => {
     if (client !== excludeClient && client.readyState === WebSocket.OPEN) {
@@ -164,196 +54,6 @@ function sendToClient(client, data) {
   if (client.readyState === WebSocket.OPEN) {
     client.send(JSON.stringify(data));
   }
-}
-
-// Generate a town with BSP buildings and Perlin terrain
-// Helper function to check if area is grassland
-function isGrassland(centerX, centerY, width, height) {
-  const tileSize = 50;
-  let grassCount = 0;
-  let totalTiles = 0;
-
-  for (let x = centerX; x < centerX + width; x += tileSize) {
-    for (let y = centerY; y < centerY + height; y += tileSize) {
-      const tile = gameState.terrain.find(t =>
-        x >= t.x && x < t.x + t.size &&
-        y >= t.y && y < t.y + t.size
-      );
-      if (tile) {
-        totalTiles++;
-        if (tile.type === 'grass') grassCount++;
-      }
-    }
-  }
-
-  return totalTiles > 0 && (grassCount / totalTiles) > 0.8; // 80% must be grass
-}
-
-function spawnObstacles() {
-  const voxelSize = 20;
-  const buildingCount = 20; // Scatter 20 buildings across the map
-  let buildingsPlaced = 0;
-  let attempts = 0;
-  const maxAttempts = 200;
-  const buildings = []; // Track building positions for road generation
-
-  while (buildingsPlaced < buildingCount && attempts < maxAttempts) {
-    attempts++;
-
-    // Random position on the map
-    const buildingX = 500 + Math.random() * 4000;
-    const buildingY = 500 + Math.random() * 4000;
-
-    const buildingTypes = ['brick', 'wood', 'stone'];
-    const buildingType = buildingTypes[Math.floor(Math.random() * buildingTypes.length)];
-
-    // Random building size
-    const buildingWidth = 250 + Math.random() * 250;  // 250-500px
-    const buildingHeight = 250 + Math.random() * 250;
-
-    // Check if this area is grassland
-    if (!isGrassland(buildingX, buildingY, buildingWidth, buildingHeight)) {
-      continue; // Skip if not on grass
-    }
-
-    // Check if overlaps with existing buildings (with spacing)
-    let overlaps = false;
-    for (const obs of gameState.obstacles) {
-      if (buildingX < obs.x + 300 && buildingX + buildingWidth + 300 > obs.x &&
-          buildingY < obs.y + 300 && buildingY + buildingHeight + 300 > obs.y) {
-        overlaps = true;
-        break;
-      }
-    }
-    if (overlaps) continue;
-
-    // Create BSP tree for this building
-    const bsp = new BSPNode(0, 0, Math.floor(buildingWidth), Math.floor(buildingHeight));
-
-    // Split 2-3 times to create rooms
-    const splits = 2 + Math.floor(Math.random() * 2);
-    const leaves = [bsp];
-
-    for (let i = 0; i < splits; i++) {
-      const leafToSplit = leaves[Math.floor(Math.random() * leaves.length)];
-      if (leafToSplit.split()) {
-        leaves.splice(leaves.indexOf(leafToSplit), 1);
-        leaves.push(leafToSplit.leftChild, leafToSplit.rightChild);
-      }
-    }
-
-    bsp.createRooms();
-    const rooms = bsp.getLeaves().map(leaf => leaf.room);
-
-    // Create outer walls
-    const chunksX = Math.ceil(buildingWidth / voxelSize);
-    const chunksY = Math.ceil(buildingHeight / voxelSize);
-
-    for (let vx = 0; vx < chunksX; vx++) {
-      for (let vy = 0; vy < chunksY; vy++) {
-        const worldX = buildingX + vx * voxelSize;
-        const worldY = buildingY + vy * voxelSize;
-
-        // Check if this is an exterior wall
-        const isExteriorWall = vx === 0 || vx === chunksX - 1 || vy === 0 || vy === chunksY - 1;
-
-        // Check if inside any room (should be walkable)
-        const localX = vx * voxelSize;
-        const localY = vy * voxelSize;
-        const insideRoom = rooms.some(room =>
-          localX >= room.x && localX < room.x + room.width &&
-          localY >= room.y && localY < room.y + room.height
-        );
-
-        // Only place blocks on walls
-        if (isExteriorWall || !insideRoom) {
-          let blockType = buildingType;
-
-          if (vy === 0) blockType = 'roof';
-          else if (isExteriorWall && vy === chunksY - 1 && vx === Math.floor(chunksX / 2)) blockType = 'door';
-          else if (isExteriorWall && Math.random() < 0.15) blockType = 'window';
-
-          gameState.obstacles.push({
-            id: `building_${buildingsPlaced}_${vx}_${vy}`,
-            x: worldX,
-            y: worldY,
-            width: voxelSize,
-            height: voxelSize,
-            health: 40,
-            maxHealth: 40,
-            blockType: blockType,
-            isWall: true,
-            isDoor: blockType === 'door',
-            isOpen: false
-          });
-        } else if (insideRoom) {
-          // Add floor tile for walkable room area
-          gameState.floors.push({
-            id: `floor_${buildingsPlaced}_${vx}_${vy}`,
-            x: worldX,
-            y: worldY,
-            size: voxelSize,
-            buildingType: buildingType
-          });
-        }
-      }
-    }
-
-    // Track building for road generation
-    buildings.push({
-      x: buildingX,
-      y: buildingY,
-      width: buildingWidth,
-      height: buildingHeight,
-      rooms: rooms
-    });
-
-    // Add building to gameState with capture zone
-    const captureX = buildingX + buildingWidth / 2;
-    const captureY = buildingY + buildingHeight / 2;
-
-    gameState.buildings.push({
-      id: `building_${buildingsPlaced}`,
-      x: buildingX,
-      y: buildingY,
-      width: buildingWidth,
-      height: buildingHeight,
-      rooms: rooms,
-
-      // Ownership properties
-      ownerId: null,
-      ownerName: null,
-      captureProgress: {}, // { playerId: progress% }
-
-      // Capture zone
-      captureZone: {
-        x: captureX,
-        y: captureY,
-        radius: 80
-      },
-
-      // Stats
-      totalBlocks: 0, // Will be calculated after all buildings created
-      destroyedBlocks: 0,
-      integrity: 100
-    });
-
-    buildingsPlaced++;
-  }
-
-  // Calculate total blocks per building
-  gameState.buildings.forEach(building => {
-    const buildingIndex = building.id.split('_')[1];
-    building.totalBlocks = gameState.obstacles.filter(obs =>
-      obs.id.startsWith(`building_${buildingIndex}_`)
-    ).length;
-  });
-
-  console.log(`Scattered ${buildingsPlaced} buildings across grasslands (${attempts} attempts)`);
-  console.log(`Created ${gameState.obstacles.length} building blocks with ${gameState.floors.length} floor tiles`);
-  console.log(`Created ${gameState.buildings.length} capturable buildings`);
-
-  return buildings;
 }
 
 // Check if position overlaps with any obstacle
@@ -378,116 +78,6 @@ function findValidSpawnPosition(maxAttempts = 10) {
   }
   // Fallback to random position if no valid spot found
   return { x: 200 + Math.random() * 4600, y: 200 + Math.random() * 4600 };
-}
-
-// Generate terrain with Perlin noise
-function spawnTerrain() {
-  const tileSize = 50;
-  const mapSize = 5000;
-  const noise = createNoise();
-
-  for (let x = 0; x < mapSize; x += tileSize) {
-    for (let y = 0; y < mapSize; y += tileSize) {
-      let terrainType = 'grass';
-      let speedModifier = 1.0;
-
-      // Use multiple octaves of Perlin noise for more organic terrain
-      const scale1 = 0.008; // Large biomes (bigger features)
-      const scale2 = 0.025; // Medium patches
-      const scale3 = 0.08;  // Small detail
-
-      const noise1 = (noise(x * scale1, y * scale1) + 1) / 2;
-      const noise2 = (noise(x * scale2, y * scale2) + 1) / 2;
-      const noise3 = (noise(x * scale3, y * scale3) + 1) / 2;
-
-      // Combine with more emphasis on large features
-      const combinedNoise = noise1 * 0.5 + noise2 * 0.35 + noise3 * 0.15;
-
-      // Create varied terrain with larger biomes
-      if (combinedNoise < 0.28) {
-        terrainType = 'water';
-        speedModifier = 0.4;
-      } else if (combinedNoise < 0.38) {
-        terrainType = 'mud';
-        speedModifier = 0.6;
-      } else if (combinedNoise < 0.65) {
-        terrainType = 'grass';
-        speedModifier = 1.0;
-      } else if (combinedNoise < 0.82) {
-        terrainType = 'forest';
-        speedModifier = 0.8;
-      } else {
-        // Rocky/sandy areas
-        terrainType = 'mud';
-        speedModifier = 0.7;
-      }
-
-      gameState.terrain.push({
-        x: x,
-        y: y,
-        size: tileSize,
-        type: terrainType,
-        speedModifier: speedModifier
-      });
-    }
-  }
-
-  console.log(`Generated ${gameState.terrain.length} organic terrain tiles`);
-}
-
-// Generate roads connecting buildings
-function generateRoads(buildings) {
-  const tileSize = 50;
-
-  // For each building, create a road path to nearest neighbor
-  for (let i = 0; i < buildings.length; i++) {
-    const buildingA = buildings[i];
-
-    // Find closest building
-    let closestDist = Infinity;
-    let closestBuilding = null;
-
-    for (let j = 0; j < buildings.length; j++) {
-      if (i === j) continue;
-      const buildingB = buildings[j];
-      const dist = Math.hypot(buildingA.x - buildingB.x, buildingA.y - buildingB.y);
-      if (dist < closestDist) {
-        closestDist = dist;
-        closestBuilding = buildingB;
-      }
-    }
-
-    if (closestBuilding && closestDist < 1500) { // Only connect if close enough
-      // Create road path between buildings
-      const startX = buildingA.x + buildingA.width / 2;
-      const startY = buildingA.y + buildingA.height / 2;
-      const endX = closestBuilding.x + closestBuilding.width / 2;
-      const endY = closestBuilding.y + closestBuilding.height / 2;
-
-      const steps = Math.max(Math.abs(endX - startX), Math.abs(endY - startY)) / tileSize;
-
-      for (let step = 0; step <= steps; step++) {
-        const t = step / steps;
-        const roadX = Math.floor((startX + (endX - startX) * t) / tileSize) * tileSize;
-        const roadY = Math.floor((startY + (endY - startY) * t) / tileSize) * tileSize;
-
-        // Make road 2-3 tiles wide
-        for (let dx = -tileSize; dx <= tileSize; dx += tileSize) {
-          for (let dy = -tileSize; dy <= tileSize; dy += tileSize) {
-            const tile = gameState.terrain.find(t =>
-              t.x === roadX + dx && t.y === roadY + dy
-            );
-            if (tile && tile.type !== 'water') {
-              tile.type = 'road';
-              tile.speedModifier = 1.3;
-            }
-          }
-        }
-      }
-    }
-  }
-
-  console.log('Generated roads connecting buildings');
 }
 
 // Spawn capture points at strategic locations
@@ -628,9 +218,9 @@ function respawnWeapon(spawnPointIndex) {
 }
 
 // Initialize terrain first, then buildings (buildings check terrain)
-spawnTerrain();
-const buildings = spawnObstacles();
-generateRoads(buildings);
+gameState.terrain = generateTerrain();
+const buildings = generateBuildings(gameState, isGrassland);
+generateRoads(buildings, gameState.terrain);
 spawnCapturePoints();
 spawnAmmoCrates();
 spawnWeaponPoints(buildings);
@@ -1028,14 +618,27 @@ wss.on('connection', (ws) => {
           break;
 
         case 'toggleDoor':
-          // Handle door open/close
+          // Handle door open/close - toggle all 3 blocks that make up the door
           const door = gameState.obstacles.find(o => o.id === data.doorId && o.isDoor);
           if (door) {
-            door.isOpen = !door.isOpen;
+            // Extract building ID from door ID (e.g., "building_0_5_9" -> "building_0")
+            const buildingId = door.id.split('_').slice(0, 2).join('_');
+
+            // Find all door blocks for this building and toggle them
+            const doorBlocks = gameState.obstacles.filter(o =>
+              o.isDoor && o.id.startsWith(buildingId + '_')
+            );
+
+            const newState = !door.isOpen;
+            doorBlocks.forEach(doorBlock => {
+              doorBlock.isOpen = newState;
+            });
+
+            // Broadcast all door IDs that were toggled
             broadcast({
               type: 'doorToggled',
-              doorId: data.doorId,
-              isOpen: door.isOpen
+              doorIds: doorBlocks.map(d => d.id),
+              isOpen: newState
             });
           }
           break;

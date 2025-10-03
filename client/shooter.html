@@ -898,11 +898,15 @@
                         console.log(`Received ${obstacles.length} obstacles from server`);
                         break;
                     case 'doorToggled':
-                        const door = obstacles.find(o => o.id === data.doorId);
-                        if (door) {
-                            door.isOpen = data.isOpen;
-                            console.log(`Door ${data.doorId} is now ${data.isOpen ? 'open' : 'closed'}`);
-                        }
+                        // Handle multiple door blocks (3-block wide doors)
+                        const doorIds = data.doorIds || [data.doorId]; // Support both old and new format
+                        doorIds.forEach(doorId => {
+                            const door = obstacles.find(o => o.id === doorId);
+                            if (door) {
+                                door.isOpen = data.isOpen;
+                            }
+                        });
+                        console.log(`${doorIds.length} door block(s) toggled: ${data.isOpen ? 'open' : 'closed'}`);
                         break;
 
                     case 'terrainUpdate':
