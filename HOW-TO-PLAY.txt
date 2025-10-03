@@ -1,0 +1,59 @@
+========================================
+  MULTIPLAYER SURVIVAL SHOOTER
+========================================
+
+HOW TO START THE GAME:
+----------------------
+1. Double-click "START-GAME.bat"
+2. Wait 5-10 seconds for servers to start
+3. Press any key when prompted to open the game in your browser
+4. Enter your name and click "Start Game"
+
+
+SHARING WITH FRIENDS:
+---------------------
+When the game server starts, look for the "Tunnel URL" in the
+"Game Server" window. It will look like:
+   https://xxxxxx.loca.lt
+
+Share this URL with your friends! They can:
+1. Open the URL in their browser
+2. Click the "Continue" button if warned
+3. Enter their name and click "Start Game"
+
+
+CONTROLS:
+---------
+- WASD or Arrow Keys: Move your character
+- Mouse: Aim
+- Left Click: Shoot
+- Move your mouse to aim and shoot in any direction
+
+
+GAME INFO:
+----------
+- Collect health (red crosses) when damaged
+- Collect armor (blue shields) for extra protection
+- Collect weapons (colored boxes) to upgrade firepower
+- You can't collect health if full, armor if maxed, or weapons you already have
+- When you die, you respawn after 2 seconds with 1.5s invulnerability
+
+
+WEAPONS:
+--------
+- Pistol (Yellow): Starting weapon, balanced
+- SMG (Orange): Fast fire rate, less damage
+- Shotgun (Red): Spread shot, close range
+- Rifle (Green): Balanced, good all-around
+- Sniper (Purple): High damage, slow fire rate
+
+
+TROUBLESHOOTING:
+----------------
+- If the game doesn't load, wait a bit longer and refresh the page
+- If you see "0 walls 0 items", refresh the page
+- Close all server windows before restarting START-GAME.bat
+- For ping issues, restart the servers
+
+
+Have fun!

@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Server Admin Dashboard</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background: #0a0e27;
+            color: #00ff88;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 0 0 20px #00ff88;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #888;
+            margin-bottom: 30px;
+        }
+
+        .section {
+            background: rgba(0, 255, 136, 0.05);
+            border: 2px solid #00ff88;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .section h2 {
+            color: #00ffff;
+            margin-bottom: 15px;
+            font-size: 1.5em;
+        }
+
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .stat-card {
+            background: rgba(0, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #00ffff;
+        }
+
+        .stat-label {
+            color: #888;
+            font-size: 0.9em;
+            margin-bottom: 5px;
+        }
+
+        .stat-value {
+            font-size: 1.8em;
+            color: #00ffff;
+            font-weight: bold;
+        }
+
+        .url-box {
+            background: rgba(0, 255, 136, 0.1);
+            padding: 20px;
+            border-radius: 8px;
+            border: 2px solid #00ff88;
+            text-align: center;
+        }
+
+        .url-box h3 {
+            color: #ffeb3b;
+            margin-bottom: 10px;
+        }
+
+        .url-display {
+            font-size: 1.3em;
+            color: #fff;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+            word-break: break-all;
+        }
+
+        .copy-btn {
+            background: #00ff88;
+            color: #0a0e27;
+            border: none;
+            padding: 12px 30px;
+            font-size: 1.1em;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+            transition: all 0.3s;
+        }
+
+        .copy-btn:hover {
+            background: #00ffff;
+            transform: scale(1.05);
+        }
+
+        .copy-btn:active {
+            transform: scale(0.95);
+        }
+
+        .player-list {
+            display: grid;
+            gap: 10px;
+        }
+
+        .player-card {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #00ff88;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .player-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .player-color {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            border: 2px solid #fff;
+        }
+
+        .player-name {
+            font-size: 1.2em;
+            color: #fff;
+        }
+
+        .player-stats {
+            display: flex;
+            gap: 20px;
+            color: #888;
+        }
+
+        .no-players {
+            text-align: center;
+            color: #888;
+            padding: 20px;
+            font-style: italic;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+            animation: pulse 2s infinite;
+        }
+
+        .status-online {
+            background: #00ff88;
+            box-shadow: 0 0 10px #00ff88;
+        }
+
+        .status-waiting {
+            background: #ffeb3b;
+            box-shadow: 0 0 10px #ffeb3b;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .actions {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 20px;
+        }
+
+        .action-btn {
+            background: rgba(0, 255, 255, 0.2);
+            color: #00ffff;
+            border: 2px solid #00ffff;
+            padding: 10px 25px;
+            font-family: 'Courier New', monospace;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .action-btn:hover {
+            background: rgba(0, 255, 255, 0.4);
+            transform: translateY(-2px);
+        }
+
+        .console-log {
+            background: rgba(0, 0, 0, 0.5);
+            padding: 15px;
+            border-radius: 8px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-size: 0.9em;
+            color: #aaa;
+        }
+
+        .console-log div {
+            margin: 5px 0;
+            padding: 3px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎮 SERVER ADMIN DASHBOARD</h1>
+        <div class="subtitle">Multiplayer Survival Shooter</div>
+
+        <!-- Server Status -->
+        <div class="section">
+            <h2><span class="status-indicator" id="statusIndicator"></span>Server Status</h2>
+            <div class="status-grid">
+                <div class="stat-card">
+                    <div class="stat-label">Players Online</div>
+                    <div class="stat-value" id="playerCount">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Pickups Spawned</div>
+                    <div class="stat-value" id="pickupCount">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Server Uptime</div>
+                    <div class="stat-value" id="uptime">0m</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Map Size</div>
+                    <div class="stat-value">5000x5000</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Share URLs -->
+        <div class="section">
+            <h2>🌐 Share Links</h2>
+
+            <div class="url-box" id="publicUrlBox" style="display: none;">
+                <h3>🌍 PUBLIC URL (Share with friends)</h3>
+                <div class="url-display" id="publicUrl">Waiting for tunnel...</div>
+                <button class="copy-btn" onclick="copyPublicUrl()">📋 Copy Public Link</button>
+            </div>
+
+            <div class="url-box" style="margin-top: 15px;">
+                <h3>🏠 LOCAL URL (This computer only)</h3>
+                <div class="url-display">http://localhost:3001</div>
+                <button class="copy-btn" onclick="copyLocalUrl()">📋 Copy Local Link</button>
+                <button class="copy-btn" onclick="window.open('http://localhost:3001', '_blank')">🎮 Play Now</button>
+            </div>
+        </div>
+
+        <!-- Connected Players -->
+        <div class="section">
+            <h2>👥 Connected Players</h2>
+            <div class="player-list" id="playerList">
+                <div class="no-players">No players connected yet...</div>
+            </div>
+        </div>
+
+        <!-- Server Actions -->
+        <div class="section">
+            <h2>⚙️ Server Actions</h2>
+            <div class="actions">
+                <button class="action-btn" onclick="window.location.reload()">🔄 Refresh Dashboard</button>
+                <button class="action-btn" onclick="window.open('http://localhost:3001', '_blank')">🎮 Join Game</button>
+            </div>
+        </div>
+
+        <!-- Console Log -->
+        <div class="section">
+            <h2>📊 Recent Activity</h2>
+            <div class="console-log" id="consoleLog">
+                <div>Server started...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ws;
+        let startTime = Date.now();
+        let players = new Map();
+
+        // Check for public URL
+        function checkPublicUrl() {
+            fetch('/server-url.json')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.url) {
+                        const httpUrl = data.url.replace('wss://', 'https://');
+                        document.getElementById('publicUrl').textContent = httpUrl;
+                        document.getElementById('publicUrlBox').style.display = 'block';
+                        addLog('✅ Public URL ready: ' + httpUrl);
+                    }
+                })
+                .catch(() => {
+                    // No public URL yet
+                    setTimeout(checkPublicUrl, 5000);
+                });
+        }
+
+        // Connect to WebSocket to monitor server
+        function connectWs() {
+            ws = new WebSocket(`ws://${window.location.host}`);
+
+            ws.onopen = () => {
+                document.getElementById('statusIndicator').className = 'status-indicator status-online';
+                addLog('📡 Connected to game server');
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+
+                if (data.type === 'init') {
+                    // Server sent initial state
+                    data.players.forEach(p => {
+                        players.set(p.id, p);
+                    });
+                    updatePlayerList();
+                } else if (data.type === 'playerJoined') {
+                    players.set(data.player.id, data.player);
+                    updatePlayerList();
+                    addLog('✅ Player joined: ' + data.player.name);
+                } else if (data.type === 'playerLeft') {
+                    const player = players.get(data.playerId);
+                    if (player) {
+                        addLog('❌ Player left: ' + player.name);
+                        players.delete(data.playerId);
+                        updatePlayerList();
+                    }
+                } else if (data.type === 'playerNameChanged') {
+                    const player = players.get(data.playerId);
+                    if (player) {
+                        player.name = data.name;
+                        updatePlayerList();
+                    }
+                } else if (data.type === 'pickupsUpdate') {
+                    document.getElementById('pickupCount').textContent = data.pickups.length;
+                }
+            };
+
+            ws.onclose = () => {
+                document.getElementById('statusIndicator').className = 'status-indicator status-waiting';
+                addLog('⚠️ Disconnected from server, retrying...');
+                setTimeout(connectWs, 3000);
+            };
+        }
+
+        function updatePlayerList() {
+            const container = document.getElementById('playerList');
+            document.getElementById('playerCount').textContent = players.size;
+
+            if (players.size === 0) {
+                container.innerHTML = '<div class="no-players">No players connected yet...</div>';
+                return;
+            }
+
+            container.innerHTML = '';
+            players.forEach(player => {
+                const card = document.createElement('div');
+                card.className = 'player-card';
+                card.innerHTML = `
+                    <div class="player-info">
+                        <div class="player-color" style="background: ${player.color || '#4ecdc4'}"></div>
+                        <div class="player-name">${player.name || 'Player'}</div>
+                    </div>
+                    <div class="player-stats">
+                        <span>HP: ${player.health}/${player.maxHealth}</span>
+                        <span>Armor: ${player.armor || 0}</span>
+                        <span>Weapon: ${player.weapon || 'pistol'}</span>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function addLog(message) {
+            const log = document.getElementById('consoleLog');
+            const time = new Date().toLocaleTimeString();
+            const entry = document.createElement('div');
+            entry.textContent = `[${time}] ${message}`;
+            log.appendChild(entry);
+            log.scrollTop = log.scrollHeight;
+
+            // Keep only last 50 entries
+            while (log.children.length > 50) {
+                log.removeChild(log.firstChild);
+            }
+        }
+
+        function copyPublicUrl() {
+            const url = document.getElementById('publicUrl').textContent;
+            navigator.clipboard.writeText(url);
+            addLog('📋 Copied public URL to clipboard');
+            alert('Public URL copied to clipboard!');
+        }
+
+        function copyLocalUrl() {
+            navigator.clipboard.writeText('http://localhost:3001');
+            addLog('📋 Copied local URL to clipboard');
+            alert('Local URL copied to clipboard!');
+        }
+
+        // Update uptime
+        setInterval(() => {
+            const minutes = Math.floor((Date.now() - startTime) / 60000);
+            const seconds = Math.floor((Date.now() - startTime) / 1000) % 60;
+            document.getElementById('uptime').textContent = `${minutes}m ${seconds}s`;
+        }, 1000);
+
+        // Initialize
+        checkPublicUrl();
+        connectWs();
+        addLog('🚀 Server dashboard loaded');
+    </script>
+</body>
+</html>

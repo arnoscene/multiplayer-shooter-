@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Connection Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-top: 0;
+        }
+        .status {
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+            font-weight: bold;
+        }
+        .status.connecting {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+        .status.connected {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .status.disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .info {
+            background-color: #e7f3ff;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .log {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .log-entry {
+            margin: 5px 0;
+            padding: 5px;
+            border-bottom: 1px solid #dee2e6;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎮 WebSocket Connection Test</h1>
+
+        <div id="status" class="status connecting">
+            Status: Connecting...
+        </div>
+
+        <div class="info">
+            <strong>Server:</strong> ws://localhost:3001<br>
+            <strong>Player ID:</strong> <span id="playerId">-</span><br>
+            <strong>Player Name:</strong> <span id="playerName">-</span>
+        </div>
+
+        <div>
+            <button id="reconnectBtn" onclick="reconnect()" disabled>Reconnect</button>
+            <button id="disconnectBtn" onclick="disconnect()">Disconnect</button>
+        </div>
+
+        <h3>Event Log:</h3>
+        <div id="log" class="log"></div>
+    </div>
+
+    <script>
+        let ws = null;
+        let playerId = null;
+        let playerName = null;
+
+        function updateStatus(status, message) {
+            const statusEl = document.getElementById('status');
+            statusEl.className = 'status ' + status;
+            statusEl.textContent = 'Status: ' + message;
+        }
+
+        function addLog(message, type = 'info') {
+            const logEl = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            const timestamp = new Date().toLocaleTimeString();
+            entry.innerHTML = `<strong>[${timestamp}]</strong> ${message}`;
+            logEl.appendChild(entry);
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function connect() {
+            addLog('Attempting to connect to ws://localhost:3001...');
+            updateStatus('connecting', 'Connecting...');
+
+            ws = new WebSocket('ws://localhost:3001');
+
+            ws.onopen = () => {
+                addLog('✅ WebSocket connection established!');
+                updateStatus('connected', 'Connected');
+                document.getElementById('reconnectBtn').disabled = true;
+                document.getElementById('disconnectBtn').disabled = false;
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    addLog(`📨 Received: ${data.type}`);
+
+                    if (data.type === 'init') {
+                        playerId = data.playerId;
+                        playerName = data.player.name;
+                        document.getElementById('playerId').textContent = playerId;
+                        document.getElementById('playerName').textContent = playerName;
+                        addLog(`🎮 Initialized as ${playerName} (${playerId})`);
+                        addLog(`📍 Starting position: (${data.player.x}, ${data.player.y})`);
+                        addLog(`💰 Starting gold: ${data.player.gold}`);
+                        addLog(`👥 Active players: ${data.players.length}`);
+                        addLog(`📦 Items in world: ${data.items.length}`);
+                        addLog(`🤖 NPCs in world: ${data.npcs.length}`);
+                    } else if (data.type === 'playerJoined') {
+                        addLog(`👋 ${data.player.name} joined the game`);
+                    } else if (data.type === 'playerLeft') {
+                        addLog(`👋 Player ${data.playerId} left the game`);
+                    } else if (data.type === 'chat') {
+                        addLog(`💬 ${data.chatMessage.playerName}: ${data.chatMessage.message}`);
+                    } else {
+                        console.log('Message:', data);
+                    }
+                } catch (error) {
+                    addLog(`❌ Error parsing message: ${error.message}`);
+                }
+            };
+
+            ws.onerror = (error) => {
+                addLog(`❌ WebSocket error occurred`);
+                console.error('WebSocket error:', error);
+            };
+
+            ws.onclose = (event) => {
+                addLog(`🔌 WebSocket connection closed (Code: ${event.code})`);
+                updateStatus('disconnected', 'Disconnected');
+                document.getElementById('reconnectBtn').disabled = false;
+                document.getElementById('disconnectBtn').disabled = true;
+                document.getElementById('playerId').textContent = '-';
+                document.getElementById('playerName').textContent = '-';
+            };
+        }
+
+        function disconnect() {
+            if (ws) {
+                addLog('Manually disconnecting...');
+                ws.close();
+            }
+        }
+
+        function reconnect() {
+            connect();
+        }
+
+        // Auto-connect on page load
+        connect();
+    </script>
+</body>
+</html>

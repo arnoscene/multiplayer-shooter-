@@ -1,0 +1,2368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multiplayer Shooter</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #0a0e27;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            display: block;
+            cursor: crosshair;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        /* Bottom Toolbar */
+        #toolbar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 120px;
+            background: linear-gradient(to top, rgba(10, 14, 39, 0.95), rgba(10, 14, 39, 0.8));
+            border-top: 3px solid rgba(0, 255, 136, 0.3);
+            display: none; /* Hidden until game starts */
+            flex-direction: row;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            font-family: Arial, sans-serif;
+            z-index: 1000;
+        }
+
+        /* Player Info Section */
+        .player-info {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            min-width: 200px;
+        }
+        .player-name {
+            color: #00ff88;
+            font-size: 18px;
+            font-weight: bold;
+        }
+        .health-bar {
+            background: rgba(0, 0, 0, 0.5);
+            height: 24px;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            position: relative;
+        }
+        .health-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #ff4444, #ff6666);
+            transition: width 0.3s;
+        }
+        .health-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 12px;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px black;
+        }
+        .armor-bar {
+            background: rgba(0, 0, 0, 0.5);
+            height: 18px;
+            border-radius: 9px;
+            overflow: hidden;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            position: relative;
+        }
+        .armor-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4488ff, #66aaff);
+            transition: width 0.3s;
+        }
+        .armor-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 10px;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px black;
+        }
+        .stamina-bar {
+            background: rgba(0, 0, 0, 0.5);
+            height: 14px;
+            border-radius: 7px;
+            overflow: hidden;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            position: relative;
+            margin-top: 5px;
+        }
+        .stamina-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #f1c40f 0%, #f39c12 100%);
+            transition: width 0.1s ease-out;
+        }
+        .stamina-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 10px;
+            font-weight: bold;
+            color: white;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+        }
+
+        /* Toolbelt Section */
+        .toolbelt {
+            display: flex;
+            gap: 10px;
+            margin: 0 auto;
+        }
+        .tool-slot {
+            width: 70px;
+            height: 70px;
+            background: rgba(0, 0, 0, 0.6);
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+        }
+        .tool-slot:hover {
+            border-color: rgba(0, 255, 136, 0.5);
+            transform: translateY(-3px);
+        }
+        .tool-slot.active {
+            border-color: #00ff88;
+            background: rgba(0, 255, 136, 0.2);
+            box-shadow: 0 0 20px rgba(0, 255, 136, 0.4);
+        }
+        .tool-icon {
+            font-size: 28px;
+        }
+        .tool-key {
+            position: absolute;
+            top: 2px;
+            right: 4px;
+            font-size: 10px;
+            color: rgba(255, 255, 255, 0.5);
+            font-weight: bold;
+        }
+        .tool-label {
+            font-size: 9px;
+            color: rgba(255, 255, 255, 0.7);
+            margin-top: 2px;
+        }
+
+        /* Stats Section */
+        .stats {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            min-width: 200px;
+            text-align: right;
+        }
+        .stat-item {
+            color: white;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 8px;
+        }
+        .stat-icon {
+            font-size: 18px;
+        }
+        .stat-value {
+            color: #00ff88;
+            font-weight: bold;
+        }
+        #menu {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.95);
+            padding: 40px;
+            border-radius: 12px;
+            border: 2px solid #00ff88;
+            color: white;
+            text-align: center;
+            min-width: 400px;
+        }
+        #menu h1 { color: #00ff88; margin-bottom: 20px; }
+        #menu input {
+            width: 100%;
+            padding: 12px;
+            margin: 10px 0;
+            background: #1a1e3a;
+            border: 2px solid #00ff88;
+            color: white;
+            border-radius: 6px;
+            font-size: 16px;
+        }
+        #menu button {
+            width: 100%;
+            padding: 12px;
+            margin: 10px 0;
+            background: #00ff88;
+            border: none;
+            color: #0a0e27;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        #menu button:hover { background: #00dd77; }
+        .color-picker {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 8px;
+            margin: 15px 0;
+        }
+        .color-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: 3px solid transparent;
+            cursor: pointer;
+        }
+        .color-btn.selected { border-color: white; }
+
+        /* Mobile Controls */
+        .mobile-controls {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+            z-index: 1000;
+        }
+        .mobile-joystick {
+            position: fixed;
+            bottom: 80px;
+            left: 80px;
+            width: 120px;
+            height: 120px;
+            pointer-events: auto;
+        }
+        .joystick-base {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.2);
+            border: 3px solid rgba(255, 255, 255, 0.4);
+            position: absolute;
+        }
+        .joystick-stick {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: rgba(0, 255, 136, 0.6);
+            border: 3px solid rgba(0, 255, 136, 0.8);
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+        .mobile-shoot-area {
+            position: fixed;
+            right: 0;
+            bottom: 0;
+            width: 50vw;
+            height: 100vh;
+            pointer-events: auto;
+        }
+        .shoot-indicator {
+            position: fixed;
+            top: 50%;
+            right: 100px;
+            transform: translateY(-50%);
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 14px;
+            text-align: center;
+        }
+        @media (max-width: 768px), (pointer: coarse) {
+            .mobile-controls { display: block; }
+            #controls { display: none !important; }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="game"></canvas>
+
+    <!-- Mobile Controls -->
+    <div class="mobile-controls">
+        <div class="mobile-joystick" id="joystick">
+            <div class="joystick-base"></div>
+            <div class="joystick-stick" id="joystickStick"></div>
+        </div>
+        <div class="mobile-shoot-area" id="shootArea">
+            <div class="shoot-indicator">
+                TAP TO<br>AIM & SHOOT
+            </div>
+        </div>
+    </div>
+
+    <!-- Bottom Toolbar -->
+    <div id="toolbar">
+        <!-- Left: Player Info -->
+        <div class="player-info">
+            <div class="player-name" id="playerName">Player</div>
+            <div class="health-bar">
+                <div class="health-fill" id="healthFill" style="width: 100%;"></div>
+                <div class="health-text" id="healthText">100/100</div>
+            </div>
+            <div class="armor-bar">
+                <div class="armor-fill" id="armorFill" style="width: 0%;"></div>
+                <div class="armor-text" id="armorText">0/100</div>
+            </div>
+            <div class="stamina-bar">
+                <div class="stamina-fill" id="staminaFill" style="width: 100%;"></div>
+                <div class="stamina-text" id="staminaText">100</div>
+            </div>
+        </div>
+
+        <!-- Center: Toolbelt -->
+        <div class="toolbelt">
+            <div class="tool-slot" id="slot1" onclick="selectTool(1)">
+                <div class="tool-key">1</div>
+                <div class="tool-icon">🔨</div>
+                <div class="tool-label">Hammer</div>
+            </div>
+            <div class="tool-slot active" id="slot2" onclick="selectTool(2)">
+                <div class="tool-key">2</div>
+                <div class="tool-icon">🔫</div>
+                <div class="tool-label" id="weaponLabel">Pistol</div>
+            </div>
+            <div class="tool-slot" id="slot3" onclick="selectTool(3)">
+                <div class="tool-key">3</div>
+                <div class="tool-icon">🔧</div>
+                <div class="tool-label">Repair</div>
+            </div>
+        </div>
+
+        <!-- Right: Stats -->
+        <div class="stats">
+            <div class="stat-item">
+                <span>Scrap:</span>
+                <span class="stat-icon">⚙️</span>
+                <span class="stat-value" id="scrapCount">0</span>
+            </div>
+            <div class="stat-item">
+                <span>Ammo:</span>
+                <span class="stat-icon">📦</span>
+                <span class="stat-value" id="ammoCount">∞</span>
+            </div>
+            <div class="stat-item">
+                <span>Ability:</span>
+                <span class="stat-value" id="abilityName">None</span>
+            </div>
+        </div>
+    </div>
+
+    <div id="menu">
+        <h1>🎯 MULTIPLAYER SHOOTER</h1>
+        <input type="text" id="nameInput" placeholder="Enter your name" maxlength="20" />
+
+        <div style="margin: 15px 0; color: #00ff88; font-weight: bold;">Choose Color:</div>
+        <div class="color-picker" id="colorPicker"></div>
+
+        <div style="margin: 20px 0; color: #00ff88; font-weight: bold;">Select Server:</div>
+        <div id="serverButtons" style="display: flex; flex-direction: column; gap: 10px;"></div>
+
+        <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #333;">
+            <input type="text" id="customServerInput" placeholder="Or enter custom URL (wss://...)" />
+            <button onclick="connectCustom()" style="margin-top: 10px;">Connect to Custom Server</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('game');
+        const ctx = canvas.getContext('2d');
+
+        // Set canvas size (leave space for toolbar)
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight; // Full height
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Map size (100m = 5000px)
+        const MAP_WIDTH = 5000;
+        const MAP_HEIGHT = 5000;
+
+        // Camera for following player
+        let cameraX = 0;
+        let cameraY = 0;
+
+        // Game state
+        let ws = null;
+        let playerId = null;
+        let players = {};
+        let bullets = [];
+        let particles = [];
+        let pickups = [];
+        let obstacles = [];
+        let myPlayer = null;
+
+        const keys = {};
+        const mouse = { x: canvas.width / 2, y: canvas.height / 2 };
+
+        const PLAYER_SIZE = 20;
+        const MOVE_SPEED = 4;
+
+        // Tool swing animation
+        let toolSwingTime = 0;
+        let toolSwingDuration = 300; // ms
+
+        // Terrain and block types
+        let terrain = [];
+        let floors = [];
+        let currentSpeedModifier = 1.0;
+
+        // Weapon types
+        const WEAPONS = {
+            pistol: { name: 'Pistol', damage: 20, fireRate: 500, bulletSpeed: 12, bulletSize: 5, color: '#ffeb3b', spread: 0, ammo: Infinity },
+            smg: { name: 'SMG', damage: 15, fireRate: 150, bulletSpeed: 14, bulletSize: 4, color: '#ff9800', spread: 0.1, ammo: 120 },
+            shotgun: { name: 'Shotgun', damage: 15, fireRate: 800, bulletSpeed: 10, bulletSize: 6, color: '#f44336', spread: 0.3, pellets: 5, ammo: 24 },
+            rifle: { name: 'Rifle', damage: 35, fireRate: 400, bulletSpeed: 18, bulletSize: 6, color: '#2196f3', spread: 0, ammo: 90 },
+            sniper: { name: 'Sniper', damage: 80, fireRate: 1500, bulletSpeed: 25, bulletSize: 8, color: '#9c27b0', spread: 0, penetration: 4, ammo: 15 },
+            rocket: { name: 'Rocket Launcher', damage: 100, fireRate: 2000, bulletSpeed: 8, bulletSize: 12, color: '#ff0000', spread: 0, explosive: true, explosionRadius: 150, ammo: 5 }
+        };
+
+        let currentWeapon = 'pistol';
+        let weaponAmmo = {}; // Track ammo for each weapon
+        let lastShot = 0;
+        let currentTool = null; // 'hammer', 'repair', or null
+
+        // Ability system
+        let currentAbility = null; // 'bladeswirl', 'shield', 'grapple'
+        let abilityActive = false;
+        let blades = []; // Spinning blades around player
+        let bladeAngle = 0;
+
+        // Explosion helper function
+        function createExplosion(x, y, radius, wallDamage, playerDamage) {
+            // Damage all obstacles in radius
+            obstacles.forEach(obs => {
+                const centerX = obs.x + obs.width / 2;
+                const centerY = obs.y + obs.height / 2;
+                const dx = x - centerX;
+                const dy = y - centerY;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist < radius) {
+                    const damageFalloff = 1 - (dist / radius);
+                    const damage = Math.floor(wallDamage * damageFalloff);
+
+                    send({
+                        type: 'obstacleHit',
+                        obstacleId: obs.id,
+                        damage: damage
+                    });
+                }
+            });
+
+            // Damage all players in radius (including self!)
+            Object.values(players).forEach(player => {
+                const dx = x - player.x;
+                const dy = y - player.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist < radius) {
+                    const damageFalloff = 1 - (dist / radius);
+                    const damage = Math.floor(playerDamage * damageFalloff);
+
+                    send({
+                        type: 'bulletHit',
+                        bulletId: 'explosion_' + Date.now() + '_' + Math.random(),
+                        targetId: player.id,
+                        damage: damage
+                    });
+                }
+            });
+
+            // Create explosion particles
+            for (let i = 0; i < 30; i++) {
+                const angle = (Math.PI * 2 / 30) * i;
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: Math.cos(angle) * (8 + Math.random() * 8),
+                    vy: Math.sin(angle) * (8 + Math.random() * 8),
+                    size: 5 + Math.random() * 8,
+                    life: 1.0,
+                    color: i % 3 === 0 ? '#ff6600' : '#ffaa00'
+                });
+            }
+        }
+
+        // FPS tracking
+        let fps = 60;
+        let lastFrameTime = Date.now();
+        let frameCount = 0;
+        let fpsUpdateTime = Date.now();
+
+        // Ping tracking
+        let ping = 0;
+        let pingStart = 0;
+        let pingUpdateInterval = null;
+
+        // Config with localStorage persistence
+        let persistentPlayerId = localStorage.getItem('shooterPlayerId');
+        if (!persistentPlayerId) {
+            persistentPlayerId = 'player_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            localStorage.setItem('shooterPlayerId', persistentPlayerId);
+        }
+
+        let playerName = localStorage.getItem('shooterPlayerName') || '';
+        let playerColor = localStorage.getItem('shooterPlayerColor') || '#4ecdc4';
+
+        const colors = ['#4ecdc4', '#ff6b6b', '#95e1d3', '#f38181', '#aa96da', '#fcbad3',
+                       '#a8d8ea', '#ffffd2', '#ffd93d', '#6bcf7f', '#ff8c42', '#c779d0'];
+
+        // Setup color picker
+        const colorPicker = document.getElementById('colorPicker');
+        colors.forEach(color => {
+            const btn = document.createElement('div');
+            btn.className = 'color-btn';
+            btn.style.background = color;
+            btn.onclick = () => {
+                playerColor = color;
+                localStorage.setItem('shooterPlayerColor', color);
+                document.querySelectorAll('.color-btn').forEach(b => b.classList.remove('selected'));
+                btn.classList.add('selected');
+            };
+            if (color === playerColor) btn.classList.add('selected');
+            colorPicker.appendChild(btn);
+        });
+
+        // Pre-fill name input with saved name
+        if (playerName) {
+            document.getElementById('nameInput').value = playerName;
+        }
+
+        // Auto-detect server URL based on how page was accessed
+        let autoServerUrl = null;
+        const currentHost = window.location.host;
+        const isLocalhost = currentHost.includes('localhost') || currentHost.includes('127.0.0.1');
+
+        if (!isLocalhost) {
+            // Accessed via public URL - auto-connect to same host's WebSocket
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            autoServerUrl = `${protocol}//${currentHost}`;
+            console.log('Public access detected, will auto-connect to:', autoServerUrl);
+        }
+
+        // Available servers for manual selection (only shown for localhost)
+        const availableServers = [
+            { name: '🏠 Local Server', url: 'ws://localhost:3001', type: 'local' },
+        ];
+
+        // Load tunnel URL if available (for localhost users)
+        let tunnelUrl = null;
+
+        // Render immediately if public URL
+        if (autoServerUrl) {
+            renderServerButtons();
+        } else {
+            // Otherwise fetch tunnel URL for localhost users
+            fetch('./server-url.json')
+                .then(res => res.json())
+                .then(data => {
+                    tunnelUrl = data.url;
+                    availableServers.push({ name: '🌐 Public Tunnel', url: tunnelUrl, type: 'tunnel' });
+                    renderServerButtons();
+                })
+                .catch((err) => {
+                    console.log('No tunnel URL found (this is OK if running locally)');
+                    renderServerButtons();
+                });
+        }
+
+        function renderServerButtons() {
+            const container = document.getElementById('serverButtons');
+            container.innerHTML = '';
+
+            // If accessed via public URL, show single "Start Game" button
+            if (autoServerUrl) {
+                const btn = document.createElement('button');
+                btn.textContent = '🎮 START GAME';
+                btn.style.background = '#00ff88';
+                btn.style.color = '#0a0e27';
+                btn.style.fontSize = '20px';
+                btn.style.padding = '15px 30px';
+                btn.style.fontWeight = 'bold';
+                btn.onclick = () => startGame(autoServerUrl);
+                container.appendChild(btn);
+                return;
+            }
+
+            // Otherwise show server selection for localhost users
+            availableServers.forEach(server => {
+                const btn = document.createElement('button');
+                btn.textContent = server.name + ' - ' + server.url;
+                btn.style.background = server.type === 'tunnel' ? '#00ff88' : '#1a2040';
+                btn.style.color = server.type === 'tunnel' ? '#0a0e27' : 'white';
+                btn.onclick = () => startGame(server.url);
+                container.appendChild(btn);
+            });
+        }
+
+        // Start game
+        function startGame(serverUrl) {
+            if (!serverUrl) {
+                alert('Please select a server or enter a custom URL');
+                return;
+            }
+
+            playerName = document.getElementById('nameInput').value.trim() || 'Player';
+            localStorage.setItem('shooterPlayerName', playerName);
+
+            document.getElementById('menu').style.display = 'none';
+            document.getElementById('toolbar').style.display = 'flex';
+            document.getElementById('playerName').textContent = playerName;
+
+            connectToServer(serverUrl);
+        }
+
+        // Tool selection function
+        function selectTool(slot) {
+            // Remove active class from all slots
+            document.getElementById('slot1').classList.remove('active');
+            document.getElementById('slot2').classList.remove('active');
+            document.getElementById('slot3').classList.remove('active');
+
+            // Add active class to selected slot
+            document.getElementById('slot' + slot).classList.add('active');
+
+            // Update current tool
+            if (slot === 1) {
+                currentTool = 'hammer';
+                console.log('🔨 Hammer equipped');
+            } else if (slot === 2) {
+                currentTool = null;
+                console.log('🔫 Weapon equipped');
+            } else if (slot === 3) {
+                currentTool = 'repair';
+                console.log('🔧 Repair tool equipped');
+            }
+        }
+
+        // Update UI function
+        function updateUI() {
+            if (!myPlayer) return;
+
+            // Update health bar
+            const healthPercent = (myPlayer.health / myPlayer.maxHealth) * 100;
+            document.getElementById('healthFill').style.width = healthPercent + '%';
+            document.getElementById('healthText').textContent = myPlayer.health + '/' + myPlayer.maxHealth;
+
+            // Update armor bar
+            const armorPercent = (myPlayer.armor / myPlayer.maxArmor) * 100;
+            document.getElementById('armorFill').style.width = armorPercent + '%';
+            document.getElementById('armorText').textContent = myPlayer.armor + '/' + myPlayer.maxArmor;
+
+            // Update stamina bar
+            const staminaPercent = (myPlayer.stamina / myPlayer.maxStamina) * 100;
+            document.getElementById('staminaFill').style.width = staminaPercent + '%';
+            document.getElementById('staminaText').textContent = Math.round(myPlayer.stamina);
+
+            // Update scrap
+            document.getElementById('scrapCount').textContent = myPlayer.scrap || 0;
+
+            // Update ammo
+            const currentAmmo = weaponAmmo[currentWeapon] ?? WEAPONS[currentWeapon]?.ammo;
+            document.getElementById('ammoCount').textContent = currentAmmo === Infinity ? '∞' : currentAmmo;
+
+            // Update weapon label
+            if (currentWeapon && WEAPONS[currentWeapon]) {
+                document.getElementById('weaponLabel').textContent = WEAPONS[currentWeapon].name;
+            }
+        }
+
+        function connectCustom() {
+            const url = document.getElementById('customServerInput').value.trim();
+
+            if (!url) {
+                alert('Please enter a server URL');
+                return;
+            }
+
+            if (!url.startsWith('ws://') && !url.startsWith('wss://')) {
+                alert('Server URL must start with ws:// or wss://');
+                return;
+            }
+
+            startGame(url);
+        }
+
+        function connectToServer(url) {
+            ws = new WebSocket(url);
+
+            ws.onopen = () => {
+                console.log('✅ Connected to server!');
+
+                // Send persistent player ID immediately
+                send({
+                    type: 'register',
+                    persistentId: persistentPlayerId,
+                    name: playerName,
+                    color: playerColor
+                });
+
+                // Start ping measurement
+                pingUpdateInterval = setInterval(() => {
+                    if (ws && ws.readyState === WebSocket.OPEN) {
+                        pingStart = Date.now();
+                        send({ type: 'ping' });
+                    }
+                }, 1000); // Measure ping every second
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+
+                switch(data.type) {
+                    case 'init':
+                        playerId = data.playerId;
+                        console.log('🎮 Player initialized:', playerId);
+
+                        // Use server position
+                        const serverPlayer = data.players.find(p => p.id === data.playerId);
+                        console.log('📍 Spawn position:', serverPlayer ? `(${Math.round(serverPlayer.x)}, ${Math.round(serverPlayer.y)})` : 'default');
+
+                        myPlayer = {
+                            id: data.playerId,
+                            name: playerName,
+                            x: serverPlayer ? serverPlayer.x : canvas.width / 2,
+                            y: serverPlayer ? serverPlayer.y : canvas.height / 2,
+                            angle: 0,
+                            health: 100,
+                            maxHealth: 100,
+                            armor: 0,
+                            maxArmor: 100,
+                            color: playerColor,
+                            weapon: 'pistol',
+                            scrap: 0,
+                            stamina: 100,
+                            maxStamina: 100,
+                            invulnerable: true,
+                            invulnerableUntil: Date.now() + 1500
+                        };
+                        players[playerId] = myPlayer;
+
+                        // Add other players
+                        data.players.forEach(p => {
+                            if (p.id !== playerId) {
+                                players[p.id] = p;
+                            }
+                        });
+
+                        console.log('👥 Total players:', Object.keys(players).length);
+
+                        // Send name update
+                        send({ type: 'updateName', name: playerName });
+
+                        document.getElementById('playerName').textContent = playerName;
+                        break;
+
+                    case 'playerJoined':
+                        players[data.player.id] = data.player;
+                        updatePlayerCount();
+                        break;
+
+                    case 'playerLeft':
+                        delete players[data.playerId];
+                        updatePlayerCount();
+                        break;
+
+                    case 'playerMoved':
+                        if (players[data.playerId] && data.playerId !== playerId) {
+                            const player = players[data.playerId];
+
+                            // Store target position for interpolation
+                            player.targetX = data.x;
+                            player.targetY = data.y;
+                            player.targetAngle = data.angle;
+
+                            // Initialize if first update
+                            if (player.x === undefined) {
+                                player.x = data.x;
+                                player.y = data.y;
+                            }
+                        }
+                        break;
+
+                    case 'playerShot':
+                        // Don't add bullets we already created locally
+                        if (data.playerId === playerId) {
+                            break; // Skip our own bullets echoed from server
+                        }
+
+                        bullets.push({
+                            id: data.bulletId,
+                            x: data.x,
+                            y: data.y,
+                            vx: data.vx,
+                            vy: data.vy,
+                            playerId: data.playerId,
+                            damage: data.damage || 20,
+                            size: data.size || 5,
+                            color: data.color || '#ffeb3b',
+                            explosive: data.explosive || false,
+                            explosionRadius: data.explosionRadius,
+                            penetration: data.penetration
+                        });
+                        break;
+
+                    case 'playerNameChanged':
+                        if (players[data.playerId]) {
+                            players[data.playerId].name = data.name;
+                        }
+                        break;
+
+                    case 'playerDamaged':
+                        if (players[data.playerId]) {
+                            players[data.playerId].health = data.health;
+                            if (data.playerId === playerId && myPlayer) {
+                                myPlayer.health = data.health;
+                            }
+                        }
+                        break;
+
+                    case 'playerDied':
+                        console.log('Player died:', data.playerId);
+                        // Create explosion at player location
+                        if (players[data.playerId]) {
+                            const player = players[data.playerId];
+                            const particleCount = 12;
+                            for (let i = 0; i < particleCount; i++) {
+                                const angle = (Math.PI * 2 / particleCount) * i;
+                                const speed = 3 + Math.random() * 3;
+                                particles.push({
+                                    x: player.x,
+                                    y: player.y,
+                                    vx: Math.cos(angle) * speed,
+                                    vy: Math.sin(angle) * speed,
+                                    color: player.color || '#4ecdc4',
+                                    life: 1.0,
+                                    size: 8 + Math.random() * 4
+                                });
+                            }
+                        }
+                        break;
+
+                    case 'playerRespawned':
+                        if (players[data.playerId]) {
+                            players[data.playerId].x = data.x;
+                            players[data.playerId].y = data.y;
+                            players[data.playerId].health = data.health;
+                            players[data.playerId].invulnerable = true;
+                            players[data.playerId].invulnerableUntil = Date.now() + 1500;
+
+                            if (data.playerId === playerId) {
+                                myPlayer.x = data.x;
+                                myPlayer.y = data.y;
+                                myPlayer.health = data.health;
+                                myPlayer.invulnerable = true;
+                                myPlayer.invulnerableUntil = Date.now() + 1500;
+                                currentWeapon = 'pistol';
+                            }
+                        }
+                        break;
+
+                    case 'pickupsUpdate':
+                        pickups = data.pickups;
+                        console.log('📦 Received', pickups.length, 'pickups');
+                        break;
+
+                    case 'obstaclesUpdate':
+                        obstacles = data.obstacles;
+                        console.log(`Received ${obstacles.length} obstacles from server`);
+                        break;
+                    case 'doorToggled':
+                        const door = obstacles.find(o => o.id === data.doorId);
+                        if (door) {
+                            door.isOpen = data.isOpen;
+                            console.log(`Door ${data.doorId} is now ${data.isOpen ? 'open' : 'closed'}`);
+                        }
+                        break;
+
+                    case 'terrainUpdate':
+                        terrain = data.terrain;
+                        console.log(`Received ${terrain.length} terrain tiles from server`);
+                        break;
+
+                    case 'floorsUpdate':
+                        floors = data.floors;
+                        console.log(`Received ${floors.length} floor tiles from server`);
+                        break;
+
+                    case 'obstacleDestroyed':
+                        // Remove obstacle
+                        obstacles = obstacles.filter(o => o.id !== data.obstacleId);
+
+                        // Create small voxel debris
+                        const centerX = data.x + data.width / 2;
+                        const centerY = data.y + data.height / 2;
+
+                        for (let i = 0; i < 8; i++) {
+                            particles.push({
+                                x: centerX,
+                                y: centerY,
+                                vx: (Math.random() - 0.5) * 10,
+                                vy: (Math.random() - 0.5) * 10,
+                                size: 4 + Math.random() * 4,
+                                life: 1.0,
+                                color: '#00ffff',
+                                isVoxel: true
+                            });
+                        }
+                        break;
+
+                    case 'obstacleDamaged':
+                        // Update obstacle health
+                        const damagedObs = obstacles.find(o => o.id === data.obstacleId);
+                        if (damagedObs) {
+                            damagedObs.health = data.health;
+                        }
+                        break;
+
+                    case 'pong':
+                        if (pingStart > 0) {
+                            ping = Date.now() - pingStart;
+                            pingStart = 0;
+                        }
+                        break;
+
+                    case 'pickupCollected':
+                        // Remove pickup
+                        pickups = pickups.filter(p => p.id !== data.pickupId);
+
+                        if (data.playerId === playerId) {
+                            if (data.pickupType === 'health') {
+                                myPlayer.health = Math.min(myPlayer.maxHealth, myPlayer.health + 30);
+                            } else if (data.pickupType === 'armor') {
+                                myPlayer.armor = Math.min(myPlayer.maxArmor, myPlayer.armor + 50);
+                            } else if (data.pickupType.startsWith('weapon_')) {
+                                const weaponType = data.pickupType.replace('weapon_', '');
+                                currentWeapon = weaponType;
+                                myPlayer.weapon = weaponType;
+                                // Initialize ammo if first time picking up
+                                if (weaponAmmo[weaponType] === undefined) {
+                                    weaponAmmo[weaponType] = WEAPONS[weaponType].ammo;
+                                }
+                            }
+                        }
+                        break;
+
+                    case 'playerArmorUpdate':
+                        if (players[data.playerId]) {
+                            players[data.playerId].armor = data.armor;
+                            if (data.playerId === playerId && myPlayer) {
+                                myPlayer.armor = data.armor;
+                            }
+                        }
+                        break;
+
+                    case 'playerScrapUpdate':
+                        if (players[data.playerId]) {
+                            players[data.playerId].scrap = data.scrap;
+                            if (data.playerId === playerId && myPlayer) {
+                                myPlayer.scrap = data.scrap;
+                            }
+                        }
+                        break;
+                }
+            };
+
+            ws.onclose = () => {
+                console.log('Disconnected');
+            };
+        }
+
+        function send(data) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify(data));
+            }
+        }
+
+        function updatePlayerCount() {
+            document.getElementById('playerCount').textContent = Object.keys(players).length;
+        }
+
+        // Input handlers
+        window.addEventListener('keydown', (e) => {
+            const key = e.key.toLowerCase();
+            keys[key] = true;
+
+            // Tool selection
+            if (key === '1') {
+                selectTool(1);
+            } else if (key === '2') {
+                selectTool(2);
+            } else if (key === '3') {
+                selectTool(3);
+            }
+
+            // Door interaction with 'E' key
+            if (key === 'e') {
+                if (!currentAbility || abilityActive) {
+                    // Check for nearby door
+                    const nearbyDoor = obstacles.find(o =>
+                        o.isDoor &&
+                        Math.hypot(o.x + o.width/2 - myPlayer.x, o.y + o.height/2 - myPlayer.y) < 50
+                    );
+
+                    if (nearbyDoor && ws && ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({
+                            type: 'toggleDoor',
+                            doorId: nearbyDoor.id
+                        }));
+                    }
+                } else if (currentAbility && !abilityActive) {
+                    // Activate ability
+                    activateAbility();
+                }
+            } else if (key === 'q' && currentAbility) {
+                // Drop ability as pickup
+                dropAbility();
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            keys[e.key.toLowerCase()] = false;
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX + cameraX;
+            mouse.y = e.clientY + cameraY;
+        });
+
+        // Prevent right-click context menu
+        window.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+        });
+
+        // Mobile touch controls
+        let joystickActive = false;
+        let joystickStartX = 0;
+        let joystickStartY = 0;
+        let joystickDeltaX = 0;
+        let joystickDeltaY = 0;
+        let mobileAimX = 0;
+        let mobileAimY = 0;
+        let isMobile = false;
+
+        const joystickEl = document.getElementById('joystick');
+        const joystickStick = document.getElementById('joystickStick');
+        const shootArea = document.getElementById('shootArea');
+
+        // Detect if device is mobile
+        if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
+            isMobile = true;
+        }
+
+        // Joystick touch handling
+        joystickEl.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const rect = joystickEl.getBoundingClientRect();
+            joystickActive = true;
+            joystickStartX = rect.left + rect.width / 2;
+            joystickStartY = rect.top + rect.height / 2;
+        });
+
+        window.addEventListener('touchmove', (e) => {
+            if (!joystickActive) return;
+            e.preventDefault();
+
+            const touch = e.touches[0];
+            const deltaX = touch.clientX - joystickStartX;
+            const deltaY = touch.clientY - joystickStartY;
+
+            // Limit joystick range
+            const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+            const maxDistance = 35;
+
+            if (distance > maxDistance) {
+                joystickDeltaX = (deltaX / distance) * maxDistance;
+                joystickDeltaY = (deltaY / distance) * maxDistance;
+            } else {
+                joystickDeltaX = deltaX;
+                joystickDeltaY = deltaY;
+            }
+
+            // Update visual
+            joystickStick.style.transform = `translate(calc(-50% + ${joystickDeltaX}px), calc(-50% + ${joystickDeltaY}px))`;
+        });
+
+        window.addEventListener('touchend', (e) => {
+            if (joystickActive) {
+                joystickActive = false;
+                joystickDeltaX = 0;
+                joystickDeltaY = 0;
+                joystickStick.style.transform = 'translate(-50%, -50%)';
+            }
+        });
+
+        // Shooting area touch handling
+        shootArea.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            mobileAimX = touch.clientX + cameraX;
+            mobileAimY = touch.clientY + cameraY;
+
+            // Trigger shoot
+            if (myPlayer && myPlayer.health > 0) {
+                const now = Date.now();
+                const weapon = WEAPONS[currentWeapon];
+
+                if (now - lastShot >= weapon.fireRate) {
+                    // Check ammo
+                    const currentAmmo = weaponAmmo[currentWeapon] ?? weapon.ammo;
+                    if (currentAmmo <= 0) {
+                        // Out of ammo, switch to pistol
+                        currentWeapon = 'pistol';
+                        return;
+                    }
+
+                    lastShot = now;
+
+                    const dx = mobileAimX - myPlayer.x;
+                    const dy = mobileAimY - myPlayer.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distance > 0) {
+                        const baseAngle = Math.atan2(dy, dx);
+                        const pellets = weapon.pellets || 1;
+                        const gunTipX = myPlayer.x + Math.cos(baseAngle) * 25;
+                        const gunTipY = myPlayer.y + Math.sin(baseAngle) * 25;
+
+                        for (let i = 0; i < pellets; i++) {
+                            const spread = weapon.spread * (Math.random() - 0.5) * 2;
+                            const angle = baseAngle + spread;
+                            const vx = Math.cos(angle) * weapon.bulletSpeed;
+                            const vy = Math.sin(angle) * weapon.bulletSpeed;
+                            const bulletId = Date.now() + '_' + i;
+
+                            bullets.push({
+                                id: bulletId,
+                                x: gunTipX,
+                                y: gunTipY,
+                                vx: vx,
+                                vy: vy,
+                                playerId: playerId,
+                                damage: weapon.damage,
+                                size: weapon.bulletSize,
+                                color: weapon.color,
+                                explosive: weapon.explosive || false,
+                                explosionRadius: weapon.explosionRadius,
+                                penetration: weapon.penetration
+                            });
+
+                            if (ws && ws.readyState === WebSocket.OPEN) {
+                                ws.send(JSON.stringify({
+                                    type: 'shoot',
+                                    bulletId: bulletId,
+                                    x: gunTipX,
+                                    y: gunTipY,
+                                    vx: vx,
+                                    vy: vy
+                                }));
+                            }
+                        }
+
+                        // Decrease ammo
+                        if (weapon.ammo !== Infinity) {
+                            if (weaponAmmo[currentWeapon] === undefined) {
+                                weaponAmmo[currentWeapon] = weapon.ammo;
+                            }
+                            weaponAmmo[currentWeapon]--;
+                        }
+                    }
+                }
+            }
+        });
+
+        shootArea.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            mobileAimX = touch.clientX + cameraX;
+            mobileAimY = touch.clientY + cameraY;
+        });
+
+        // Ability functions
+        function activateAbility() {
+            if (currentAbility === 'bladeswirl') {
+                abilityActive = true;
+                // Create 4 spinning blades
+                blades = [];
+                for (let i = 0; i < 4; i++) {
+                    blades.push({
+                        angle: (Math.PI * 2 / 4) * i,
+                        radius: 60
+                    });
+                }
+                document.getElementById('abilityName').textContent = 'Blade Swirl (ACTIVE)';
+                document.getElementById('abilityName').style.color = '#ff00ff';
+
+                // Deactivate after 10 seconds
+                setTimeout(() => {
+                    abilityActive = false;
+                    blades = [];
+                    currentAbility = null;
+                    document.getElementById('abilityName').textContent = 'None';
+                    document.getElementById('abilityName').style.color = '#00ffff';
+                }, 10000);
+            }
+        }
+
+        function dropAbility() {
+            // Create pickup where player drops it
+            if (myPlayer && currentAbility) {
+                const dropData = {
+                    id: 'pickup_dropped_' + Date.now(),
+                    type: 'ability_' + currentAbility,
+                    x: myPlayer.x,
+                    y: myPlayer.y
+                };
+
+                // Send to server so it persists for all players
+                send({
+                    type: 'dropAbility',
+                    pickup: dropData
+                });
+
+                currentAbility = null;
+                abilityActive = false;
+                blades = [];
+                document.getElementById('abilityName').textContent = 'None';
+                document.getElementById('abilityName').style.color = '#00ffff';
+            }
+        }
+
+        window.addEventListener('click', () => {
+            if (!myPlayer || myPlayer.health <= 0) return;
+
+            const now = Date.now();
+
+            // Hammer tool - destroy blocks
+            if (currentTool === 'hammer') {
+                // Trigger swing animation
+                toolSwingTime = Date.now();
+
+                // Find closest block within hammer range (50px)
+                let closestObs = null;
+                let closestDist = 50;
+
+                obstacles.forEach(obs => {
+                    const centerX = obs.x + obs.width / 2;
+                    const centerY = obs.y + obs.height / 2;
+                    const dx = mouse.x - centerX;
+                    const dy = mouse.y - centerY;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < closestDist) {
+                        closestObs = obs;
+                        closestDist = dist;
+                    }
+                });
+
+                if (closestObs) {
+                    send({
+                        type: 'hammerHit',
+                        obstacleId: closestObs.id,
+                        damage: 30
+                    });
+                }
+                return;
+            }
+
+            // Repair tool - restore block health
+            if (currentTool === 'repair') {
+                // Trigger swing animation
+                toolSwingTime = Date.now();
+
+                // Find closest damaged block within repair range (50px)
+                let closestObs = null;
+                let closestDist = 50;
+
+                obstacles.forEach(obs => {
+                    if (obs.health < obs.maxHealth) { // Only damaged blocks
+                        const centerX = obs.x + obs.width / 2;
+                        const centerY = obs.y + obs.height / 2;
+                        const dx = mouse.x - centerX;
+                        const dy = mouse.y - centerY;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+
+                        if (dist < closestDist) {
+                            closestObs = obs;
+                            closestDist = dist;
+                        }
+                    }
+                });
+
+                if (closestObs && myPlayer.scrap >= 1) {
+                    send({
+                        type: 'repairBlock',
+                        obstacleId: closestObs.id,
+                        repairAmount: 20
+                    });
+                } else if (closestObs && myPlayer.scrap < 1) {
+                    console.log('❌ Need 1 scrap to repair');
+                }
+                return;
+            }
+
+            const weapon = WEAPONS[currentWeapon];
+
+            // Check fire rate
+            if (now - lastShot < weapon.fireRate) return;
+
+            // Check ammo
+            const currentAmmo = weaponAmmo[currentWeapon] ?? weapon.ammo;
+            if (currentAmmo <= 0) {
+                // Out of ammo, switch to pistol
+                currentWeapon = 'pistol';
+                return;
+            }
+
+            lastShot = now;
+
+            // Calculate angle to mouse first
+            const dx = mouse.x - myPlayer.x;
+            const dy = mouse.y - myPlayer.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance > 0) {
+                const baseAngle = Math.atan2(dy, dx);
+                const pellets = weapon.pellets || 1;
+
+                // Spawn bullets from gun tip (30px from center)
+                const gunTipX = myPlayer.x + Math.cos(baseAngle) * 25;
+                const gunTipY = myPlayer.y + Math.sin(baseAngle) * 25;
+
+                for (let i = 0; i < pellets; i++) {
+                    const spread = weapon.spread * (Math.random() - 0.5) * 2;
+                    const angle = baseAngle + spread;
+
+                    const bulletId = 'b_' + playerId + '_' + Date.now() + '_' + Math.random();
+                    const vx = Math.cos(angle) * weapon.bulletSpeed;
+                    const vy = Math.sin(angle) * weapon.bulletSpeed;
+
+                    bullets.push({
+                        id: bulletId,
+                        x: gunTipX,
+                        y: gunTipY,
+                        vx,
+                        vy,
+                        playerId: playerId,
+                        damage: weapon.damage,
+                        size: weapon.bulletSize,
+                        color: weapon.color,
+                        explosive: weapon.explosive || false,
+                        explosionRadius: weapon.explosionRadius,
+                        penetration: weapon.penetration
+                    });
+
+                    send({
+                        type: 'shoot',
+                        bulletId,
+                        x: gunTipX,
+                        y: gunTipY,
+                        vx,
+                        vy,
+                        damage: weapon.damage,
+                        size: weapon.bulletSize,
+                        color: weapon.color,
+                        explosive: weapon.explosive || false,
+                        explosionRadius: weapon.explosionRadius,
+                        penetration: weapon.penetration
+                    });
+                }
+
+                // Decrease ammo
+                if (weapon.ammo !== Infinity) {
+                    if (weaponAmmo[currentWeapon] === undefined) {
+                        weaponAmmo[currentWeapon] = weapon.ammo;
+                    }
+                    weaponAmmo[currentWeapon]--;
+                }
+            }
+        });
+
+        // Game loop
+        let lastUpdate = 0;
+        const UPDATE_RATE = 100; // Send updates every 100ms (reduced for tunnel lag)
+
+        // Network lag compensation
+        let lastSentPickup = new Set();
+        let lastSentBullet = new Set();
+
+        function gameLoop() {
+            // FPS calculation
+            frameCount++;
+            const now = Date.now();
+            if (now - fpsUpdateTime > 1000) {
+                fps = Math.round((frameCount * 1000) / (now - fpsUpdateTime));
+                frameCount = 0;
+                fpsUpdateTime = now;
+            }
+
+            // Update UI is now handled by updateUI() function called separately
+
+            // Update camera to follow player
+            if (myPlayer) {
+                cameraX = myPlayer.x - canvas.width / 2;
+                cameraY = myPlayer.y - canvas.height / 2;
+
+                // Clamp camera to map bounds
+                cameraX = Math.max(0, Math.min(MAP_WIDTH - canvas.width, cameraX));
+                cameraY = Math.max(0, Math.min(MAP_HEIGHT - canvas.height, cameraY));
+            }
+
+            // Clear canvas
+            ctx.fillStyle = '#0a0e27';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Save context and translate for camera
+            ctx.save();
+            ctx.translate(-cameraX, -cameraY);
+
+            // Draw grid (only visible area, less dense)
+            ctx.strokeStyle = '#1a2040';
+            ctx.lineWidth = 1;
+            const gridStartX = Math.floor(cameraX / 100) * 100;
+            const gridStartY = Math.floor(cameraY / 100) * 100;
+            for (let x = gridStartX; x < cameraX + canvas.width + 100; x += 100) {
+                ctx.beginPath();
+                ctx.moveTo(x, Math.max(0, cameraY));
+                ctx.lineTo(x, Math.min(MAP_HEIGHT, cameraY + canvas.height));
+                ctx.stroke();
+            }
+            for (let y = gridStartY; y < cameraY + canvas.height + 100; y += 100) {
+                ctx.beginPath();
+                ctx.moveTo(Math.max(0, cameraX), y);
+                ctx.lineTo(Math.min(MAP_WIDTH, cameraX + canvas.width), y);
+                ctx.stroke();
+            }
+
+            // Draw map bounds (only if visible)
+            ctx.strokeStyle = '#ff0000';
+            ctx.lineWidth = 5;
+            ctx.strokeRect(0, 0, MAP_WIDTH, MAP_HEIGHT);
+
+            // Interpolate other players' positions for smooth movement
+            Object.values(players).forEach(player => {
+                if (player.id !== playerId && player.targetX !== undefined) {
+                    // Calculate distance to target
+                    const distX = player.targetX - player.x;
+                    const distY = player.targetY - player.y;
+                    const distance = Math.sqrt(distX * distX + distY * distY);
+
+                    // Use slower interpolation, but speed up if too far behind
+                    let lerpFactor = 0.15; // Slower default
+                    if (distance > 50) lerpFactor = 0.25; // Speed up if desynced
+
+                    player.x += distX * lerpFactor;
+                    player.y += distY * lerpFactor;
+
+                    // Interpolate angle (handle wrapping)
+                    let angleDiff = player.targetAngle - player.angle;
+                    if (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                    if (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+                    player.angle += angleDiff * lerpFactor;
+                }
+            });
+
+            // Update player
+            if (myPlayer && myPlayer.health > 0) {
+                // Get speed modifier from current terrain
+                currentSpeedModifier = 1.0; // default
+                for (const tile of terrain) {
+                    if (myPlayer.x >= tile.x && myPlayer.x < tile.x + tile.size &&
+                        myPlayer.y >= tile.y && myPlayer.y < tile.y + tile.size) {
+                        currentSpeedModifier = tile.speedModifier;
+                        break;
+                    }
+                }
+
+                let dx = 0, dy = 0;
+
+                // Check if sprinting
+                const isSprinting = keys['shift'] && myPlayer.stamina > 0;
+                const sprintMultiplier = isSprinting ? 1.8 : 1.0;
+
+                // Stamina drain/regen
+                const isMoving = keys['w'] || keys['s'] || keys['a'] || keys['d'] || keys['arrowup'] || keys['arrowdown'] || keys['arrowleft'] || keys['arrowright'] || (isMobile && joystickActive);
+                if (isSprinting && isMoving) {
+                    myPlayer.stamina = Math.max(0, myPlayer.stamina - 0.5); // Drain 0.5 per frame when sprinting
+                } else {
+                    myPlayer.stamina = Math.min(myPlayer.maxStamina, myPlayer.stamina + 0.2); // Regen 0.2 per frame
+                }
+
+                // Keyboard controls
+                if (keys['w'] || keys['arrowup']) dy -= MOVE_SPEED * currentSpeedModifier * sprintMultiplier;
+                if (keys['s'] || keys['arrowdown']) dy += MOVE_SPEED * currentSpeedModifier * sprintMultiplier;
+                if (keys['a'] || keys['arrowleft']) dx -= MOVE_SPEED * currentSpeedModifier * sprintMultiplier;
+                if (keys['d'] || keys['arrowright']) dx += MOVE_SPEED * currentSpeedModifier * sprintMultiplier;
+
+                // Mobile joystick controls
+                if (isMobile && joystickActive) {
+                    dx = (joystickDeltaX / 35) * MOVE_SPEED * currentSpeedModifier * sprintMultiplier;
+                    dy = (joystickDeltaY / 35) * MOVE_SPEED * currentSpeedModifier * sprintMultiplier;
+                }
+
+                // Normalize diagonal movement
+                if (dx !== 0 && dy !== 0) {
+                    const factor = 1 / Math.sqrt(2);
+                    dx *= factor;
+                    dy *= factor;
+                }
+
+                let newX = myPlayer.x + dx;
+                let newY = myPlayer.y + dy;
+
+                // Clamp to map bounds
+                newX = Math.max(PLAYER_SIZE, Math.min(MAP_WIDTH - PLAYER_SIZE, newX));
+                newY = Math.max(PLAYER_SIZE, Math.min(MAP_HEIGHT - PLAYER_SIZE, newY));
+
+                // Check obstacle collision with sliding
+                const checkCollision = (x, y) => {
+                    for (const obs of obstacles) {
+                        // Skip collision with open doors
+                        if (obs.isDoor && obs.isOpen) {
+                            continue;
+                        }
+
+                        const closestX = Math.max(obs.x, Math.min(x, obs.x + obs.width));
+                        const closestY = Math.max(obs.y, Math.min(y, obs.y + obs.height));
+                        const distX = x - closestX;
+                        const distY = y - closestY;
+                        if (distX * distX + distY * distY < PLAYER_SIZE * PLAYER_SIZE) {
+                            return true;
+                        }
+                    }
+                    return false;
+                };
+
+                // Try full movement
+                if (!checkCollision(newX, newY)) {
+                    myPlayer.x = newX;
+                    myPlayer.y = newY;
+                } else {
+                    // Try sliding on X axis
+                    if (!checkCollision(newX, myPlayer.y)) {
+                        myPlayer.x = newX;
+                    }
+                    // Try sliding on Y axis
+                    if (!checkCollision(myPlayer.x, newY)) {
+                        myPlayer.y = newY;
+                    }
+                }
+
+                // Update angle
+                let aimX = mouse.x;
+                let aimY = mouse.y;
+
+                // Use mobile aim if on mobile
+                if (isMobile && mobileAimX !== 0 && mobileAimY !== 0) {
+                    aimX = mobileAimX;
+                    aimY = mobileAimY;
+                }
+
+                const angleDx = aimX - myPlayer.x;
+                const angleDy = aimY - myPlayer.y;
+                myPlayer.angle = Math.atan2(angleDy, angleDx);
+
+                // Check pickup collision
+                pickups.forEach(pickup => {
+                    const dx = myPlayer.x - pickup.x;
+                    const dy = myPlayer.y - pickup.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < PLAYER_SIZE + 15) {
+                        // Only collect if we need it and haven't already sent
+                        if (lastSentPickup.has(pickup.id)) return;
+
+                        let canCollect = false;
+                        if (pickup.type === 'health' && myPlayer.health < myPlayer.maxHealth) {
+                            canCollect = true;
+                        } else if (pickup.type === 'armor' && myPlayer.armor < myPlayer.maxArmor) {
+                            canCollect = true;
+                        } else if (pickup.type.startsWith('weapon_')) {
+                            const weaponType = pickup.type.replace('weapon_', '');
+                            // Collect if we don't have it OR if we need ammo refill
+                            if (currentWeapon !== weaponType) {
+                                // Drop current weapon (except pistol)
+                                if (currentWeapon !== 'pistol') {
+                                    const dropData = {
+                                        id: 'weapon_drop_' + Date.now(),
+                                        type: 'weapon_' + currentWeapon,
+                                        x: myPlayer.x,
+                                        y: myPlayer.y
+                                    };
+                                    send({
+                                        type: 'dropAbility',
+                                        pickup: dropData
+                                    });
+                                }
+                                canCollect = true;
+                            } else {
+                                // Refill ammo for current weapon
+                                const weapon = WEAPONS[weaponType];
+                                if (weapon.ammo !== Infinity) {
+                                    weaponAmmo[weaponType] = weapon.ammo;
+                                    canCollect = true;
+                                }
+                            }
+                        } else if (pickup.type.startsWith('ability_')) {
+                            // Only collect if we don't have an ability
+                            if (!currentAbility) {
+                                const abilityType = pickup.type.replace('ability_', '');
+                                currentAbility = abilityType;
+                                const abilityNames = {
+                                    bladeswirl: 'Blade Swirl',
+                                    shield: 'Shield',
+                                    grapple: 'Grapple Hook'
+                                };
+                                document.getElementById('abilityName').textContent = abilityNames[abilityType] || abilityType;
+                                document.getElementById('abilityName').style.color = '#00ffff';
+                                canCollect = true;
+                            }
+                        }
+
+                        if (canCollect) {
+                            send({ type: 'collectPickup', pickupId: pickup.id });
+                            lastSentPickup.add(pickup.id);
+                            setTimeout(() => lastSentPickup.delete(pickup.id), 500);
+                        }
+                    }
+                });
+
+                // Send update to server (only if position/angle changed)
+                const now = Date.now();
+                if (now - lastUpdate > UPDATE_RATE) {
+                    const roundedX = Math.round(myPlayer.x);
+                    const roundedY = Math.round(myPlayer.y);
+                    const roundedAngle = Math.round(myPlayer.angle * 100) / 100;
+
+                    // Only send if changed significantly
+                    if (!myPlayer.lastSent ||
+                        Math.abs(roundedX - myPlayer.lastSent.x) > 1 ||
+                        Math.abs(roundedY - myPlayer.lastSent.y) > 1 ||
+                        Math.abs(roundedAngle - myPlayer.lastSent.angle) > 0.05) {
+
+                        pingStart = now;
+                        send({
+                            type: 'move',
+                            x: roundedX,
+                            y: roundedY,
+                            angle: roundedAngle
+                        });
+
+                        myPlayer.lastSent = { x: roundedX, y: roundedY, angle: roundedAngle };
+                    }
+                    lastUpdate = now;
+                }
+            }
+
+            // Update particles
+            particles = particles.filter(particle => {
+                particle.x += particle.vx;
+                particle.y += particle.vy;
+                particle.vx *= 0.95; // Friction
+                particle.vy *= 0.95;
+                particle.life -= 0.02;
+                particle.size *= 0.97;
+                return particle.life > 0;
+            });
+
+            // Update bullets and check collisions
+            bullets = bullets.filter(bullet => {
+                bullet.x += bullet.vx;
+                bullet.y += bullet.vy;
+
+                // Check obstacle collision
+                for (const obs of obstacles) {
+                    if (bullet.x >= obs.x && bullet.x <= obs.x + obs.width &&
+                        bullet.y >= obs.y && bullet.y <= obs.y + obs.height) {
+
+                        // Check if bullet has penetration (sniper)
+                        if (bullet.penetration && bullet.penetration > 0) {
+                            // Track penetration count
+                            if (!bullet.penetrationCount) bullet.penetrationCount = 0;
+
+                            // Only damage if we haven't hit this block before
+                            if (!bullet.hitBlocks) bullet.hitBlocks = new Set();
+                            if (!bullet.hitBlocks.has(obs.id)) {
+                                bullet.hitBlocks.add(obs.id);
+                                bullet.penetrationCount++;
+
+                                // Send damage
+                                if (bullet.playerId === playerId) {
+                                    send({
+                                        type: 'obstacleHit',
+                                        obstacleId: obs.id,
+                                        damage: bullet.damage
+                                    });
+                                }
+
+                                // Create penetration particles
+                                for (let i = 0; i < 2; i++) {
+                                    particles.push({
+                                        x: bullet.x,
+                                        y: bullet.y,
+                                        vx: (Math.random() - 0.5) * 4,
+                                        vy: (Math.random() - 0.5) * 4,
+                                        size: 2 + Math.random() * 2,
+                                        life: 1.0,
+                                        color: '#9c27b0'
+                                    });
+                                }
+
+                                // Stop bullet if penetration limit reached
+                                if (bullet.penetrationCount >= bullet.penetration) {
+                                    bullet.hit = true;
+                                    break;
+                                }
+                            }
+                            // Continue bullet flight if still has penetration left
+                            continue;
+                        }
+
+                        // Handle rocket explosion
+                        if (bullet.explosive && bullet.playerId === playerId && !bullet.hitSent) {
+                            const explosionRadius = bullet.explosionRadius || 150;
+                            createExplosion(bullet.x, bullet.y, explosionRadius, 500, 100);
+                            bullet.hitSent = true;
+                        } else if (bullet.playerId === playerId && !bullet.hitSent) {
+                            // Normal bullet damage
+                            send({
+                                type: 'obstacleHit',
+                                obstacleId: obs.id,
+                                damage: bullet.damage
+                            });
+                            bullet.hitSent = true;
+
+                            // Create fewer debris particles to reduce lag
+                            for (let i = 0; i < 3; i++) {
+                                particles.push({
+                                    x: bullet.x,
+                                    y: bullet.y,
+                                    vx: (Math.random() - 0.5) * 8,
+                                    vy: (Math.random() - 0.5) * 8,
+                                    size: 3 + Math.random() * 3,
+                                    life: 1.0,
+                                    color: '#00ffff'
+                                });
+                            }
+                        }
+
+                        bullet.hit = true;
+                        break;
+                    }
+                }
+
+                // Check if bullet hit any player (ONLY FOR MY BULLETS)
+                if (bullet.playerId === playerId && !bullet.hit) {
+                    Object.values(players).forEach(player => {
+                        if (player.id !== playerId && !bullet.hit) {
+                            // Skip if invulnerable
+                            if (player.invulnerable && Date.now() < player.invulnerableUntil) {
+                                return;
+                            }
+
+                            const dx = bullet.x - player.x;
+                            const dy = bullet.y - player.y;
+                            const distance = Math.sqrt(dx * dx + dy * dy);
+
+                            if (distance < PLAYER_SIZE + bullet.size) {
+                                // Hit! Check if explosive
+                                if (bullet.explosive) {
+                                    const explosionRadius = bullet.explosionRadius || 150;
+                                    createExplosion(bullet.x, bullet.y, explosionRadius, 500, 100);
+                                } else {
+                                    // Normal bullet damage
+                                    send({
+                                        type: 'bulletHit',
+                                        bulletId: bullet.id,
+                                        targetId: player.id,
+                                        damage: bullet.damage
+                                    });
+                                }
+
+                                // Mark bullet for removal
+                                bullet.hit = true;
+                            }
+                        }
+                    });
+                }
+
+                return !bullet.hit &&
+                       bullet.x >= 0 && bullet.x <= MAP_WIDTH &&
+                       bullet.y >= 0 && bullet.y <= MAP_HEIGHT;
+            });
+
+            // Draw terrain first (background layer)
+            terrain.forEach(tile => {
+                let color = '#228b22'; // default grass green
+                if (tile.type === 'road') color = '#555555'; // dark gray
+                else if (tile.type === 'mud') color = '#8b7355'; // brown
+                else if (tile.type === 'water') color = '#4682b4'; // steel blue
+                else if (tile.type === 'forest') color = '#1a5a1a'; // dark green
+
+                ctx.fillStyle = color;
+                ctx.fillRect(tile.x, tile.y, tile.size, tile.size);
+            });
+
+            // Draw floor tiles (building interiors)
+            floors.forEach(floor => {
+                let color = '#3a3a3a'; // default dark gray floor
+                if (floor.buildingType === 'wood') color = '#5c4033'; // wooden floor
+                else if (floor.buildingType === 'brick') color = '#4a4a4a'; // concrete floor
+                else if (floor.buildingType === 'stone') color = '#5a5a5a'; // stone floor
+
+                ctx.fillStyle = color;
+                ctx.fillRect(floor.x, floor.y, floor.size, floor.size);
+
+                // Add subtle grid lines for floor tiles
+                ctx.strokeStyle = 'rgba(0, 0, 0, 0.2)';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(floor.x, floor.y, floor.size, floor.size);
+            });
+
+            // Draw obstacles (building blocks)
+            obstacles.forEach(obs => {
+                // Different colors based on block type
+                let color = '#00ffff'; // default cyan
+                if (obs.blockType === 'brick') color = '#a0522d'; // sienna brown
+                else if (obs.blockType === 'wood') color = '#8b4513'; // saddle brown
+                else if (obs.blockType === 'stone') color = '#708090'; // slate gray
+                else if (obs.blockType === 'window') color = '#87ceeb'; // sky blue (glass)
+                else if (obs.blockType === 'door') {
+                    // Open doors are lighter/translucent
+                    color = obs.isOpen ? '#a0826d' : '#654321'; // lighter brown when open
+                }
+                else if (obs.blockType === 'roof') color = '#8b0000'; // dark red
+
+                ctx.fillStyle = color;
+
+                // Open doors are semi-transparent
+                if (obs.blockType === 'door' && obs.isOpen) {
+                    ctx.globalAlpha = 0.3;
+                }
+
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = color;
+                ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
+                ctx.shadowBlur = 0;
+
+                // Reset alpha
+                ctx.globalAlpha = 1.0;
+
+                // Inner outline for depth
+                ctx.strokeStyle = obs.blockType === 'window' ? '#ffffff' : '#000000';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(obs.x + 1, obs.y + 1, obs.width - 2, obs.height - 2);
+
+                // Draw "E" prompt for nearby doors
+                if (obs.blockType === 'door' && myPlayer) {
+                    const dist = Math.hypot(obs.x + obs.width/2 - myPlayer.x, obs.y + obs.height/2 - myPlayer.y);
+                    if (dist < 50) {
+                        ctx.fillStyle = '#00ff00';
+                        ctx.font = 'bold 12px Arial';
+                        ctx.textAlign = 'center';
+                        ctx.fillText(obs.isOpen ? '[E] Close' : '[E] Open', obs.x + obs.width/2, obs.y - 5);
+                        ctx.textAlign = 'left';
+                    }
+                }
+            });
+
+            // Draw pickups
+            pickups.forEach(pickup => {
+                const glowSize = 30 + Math.sin(Date.now() / 200) * 5;
+
+                if (pickup.type === 'health') {
+                    ctx.fillStyle = '#00ff00';
+                    ctx.shadowBlur = 20;
+                    ctx.shadowColor = '#00ff00';
+                    ctx.beginPath();
+                    ctx.arc(pickup.x, pickup.y, 15, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+
+                    // Draw cross
+                    ctx.strokeStyle = 'white';
+                    ctx.lineWidth = 3;
+                    ctx.beginPath();
+                    ctx.moveTo(pickup.x - 7, pickup.y);
+                    ctx.lineTo(pickup.x + 7, pickup.y);
+                    ctx.moveTo(pickup.x, pickup.y - 7);
+                    ctx.lineTo(pickup.x, pickup.y + 7);
+                    ctx.stroke();
+                } else if (pickup.type === 'armor') {
+                    ctx.fillStyle = '#00aaff';
+                    ctx.shadowBlur = 20;
+                    ctx.shadowColor = '#00aaff';
+                    ctx.beginPath();
+                    ctx.arc(pickup.x, pickup.y, 15, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+
+                    // Draw shield
+                    ctx.strokeStyle = 'white';
+                    ctx.lineWidth = 3;
+                    ctx.beginPath();
+                    ctx.moveTo(pickup.x, pickup.y - 10);
+                    ctx.lineTo(pickup.x - 8, pickup.y - 5);
+                    ctx.lineTo(pickup.x - 8, pickup.y + 5);
+                    ctx.lineTo(pickup.x, pickup.y + 10);
+                    ctx.lineTo(pickup.x + 8, pickup.y + 5);
+                    ctx.lineTo(pickup.x + 8, pickup.y - 5);
+                    ctx.closePath();
+                    ctx.stroke();
+                } else if (pickup.type.startsWith('weapon_')) {
+                    const weaponType = pickup.type.replace('weapon_', '');
+                    const weaponData = WEAPONS[weaponType];
+                    ctx.fillStyle = weaponData.color;
+                    ctx.shadowBlur = 20;
+                    ctx.shadowColor = weaponData.color;
+                    ctx.beginPath();
+                    ctx.arc(pickup.x, pickup.y, 15, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+
+                    // Draw gun icon
+                    ctx.strokeStyle = 'white';
+                    ctx.lineWidth = 3;
+                    ctx.lineCap = 'round';
+                    ctx.beginPath();
+                    ctx.moveTo(pickup.x - 8, pickup.y);
+                    ctx.lineTo(pickup.x + 8, pickup.y);
+                    ctx.stroke();
+                } else if (pickup.type.startsWith('ability_')) {
+                    // Draw ability pickup as spinning icon
+                    const abilityType = pickup.type.replace('ability_', '');
+                    ctx.fillStyle = '#00ffff';
+                    ctx.shadowBlur = 25;
+                    ctx.shadowColor = '#00ffff';
+
+                    ctx.save();
+                    ctx.translate(pickup.x, pickup.y);
+                    ctx.rotate(Date.now() / 500);
+
+                    if (abilityType === 'bladeswirl') {
+                        // Draw 4 small blades
+                        for (let i = 0; i < 4; i++) {
+                            const angle = (Math.PI * 2 / 4) * i;
+                            const x = Math.cos(angle) * 12;
+                            const y = Math.sin(angle) * 12;
+                            ctx.beginPath();
+                            ctx.moveTo(x - 8, y - 3);
+                            ctx.lineTo(x + 8, y);
+                            ctx.lineTo(x - 8, y + 3);
+                            ctx.closePath();
+                            ctx.fill();
+                        }
+                    }
+                    ctx.shadowBlur = 0;
+                    ctx.restore();
+                }
+            });
+
+            // Draw particles
+            particles.forEach(particle => {
+                ctx.globalAlpha = particle.life;
+                ctx.fillStyle = particle.color;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = particle.color;
+
+                if (particle.isVoxel) {
+                    // Draw as square voxel chunk
+                    ctx.fillRect(particle.x - particle.size / 2, particle.y - particle.size / 2, particle.size, particle.size);
+                } else {
+                    // Draw as circle
+                    ctx.beginPath();
+                    ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                ctx.shadowBlur = 0;
+                ctx.globalAlpha = 1.0;
+            });
+
+            // Draw bullets
+            bullets.forEach(bullet => {
+                ctx.fillStyle = bullet.color || '#ffeb3b';
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = bullet.color || '#ffeb3b';
+                ctx.beginPath();
+                ctx.arc(bullet.x, bullet.y, bullet.size || 5, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            });
+
+            // Draw players
+            Object.values(players).forEach(player => {
+                const isMe = player.id === playerId;
+
+                // Don't draw dead players
+                if (player.health <= 0) return;
+
+                // Check if invulnerable and should flash
+                const isInvulnerable = player.invulnerable && Date.now() < player.invulnerableUntil;
+                const flashOn = isInvulnerable ? Math.floor(Date.now() / 100) % 2 === 0 : true;
+
+                if (!flashOn) return; // Skip drawing if flashing off
+
+                // Shield circle (if armor > 0)
+                if (player.armor > 0) {
+                    const shieldRadius = PLAYER_SIZE + 8;
+                    const shieldPercent = player.armor / (player.maxArmor || 100);
+
+                    ctx.strokeStyle = '#00aaff';
+                    ctx.lineWidth = 3;
+                    ctx.shadowBlur = 15;
+                    ctx.shadowColor = '#00aaff';
+                    ctx.globalAlpha = 0.6 + (shieldPercent * 0.4);
+                    ctx.beginPath();
+                    ctx.arc(player.x, player.y, shieldRadius, 0, Math.PI * 2 * shieldPercent);
+                    ctx.stroke();
+                    ctx.globalAlpha = 1.0;
+                    ctx.shadowBlur = 0;
+                }
+
+                // Draw top-down person
+                const color = isInvulnerable ? '#ffffff' : (player.color || '#4ecdc4');
+                ctx.shadowBlur = isMe ? 20 : 10;
+                ctx.shadowColor = isInvulnerable ? '#ffffff' : (player.color || '#4ecdc4');
+
+                // Body (torso)
+                ctx.fillStyle = color;
+                ctx.beginPath();
+                ctx.ellipse(player.x, player.y + 2, 12, 16, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Head
+                ctx.beginPath();
+                ctx.arc(player.x, player.y - 12, 8, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Arms (pointing in aim direction)
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 5;
+                ctx.lineCap = 'round';
+
+                // Left arm
+                ctx.beginPath();
+                ctx.moveTo(player.x - 8, player.y);
+                ctx.lineTo(player.x + Math.cos(player.angle - 0.3) * 18, player.y + Math.sin(player.angle - 0.3) * 18);
+                ctx.stroke();
+
+                // Right arm
+                ctx.beginPath();
+                ctx.moveTo(player.x + 8, player.y);
+                ctx.lineTo(player.x + Math.cos(player.angle + 0.3) * 18, player.y + Math.sin(player.angle + 0.3) * 18);
+                ctx.stroke();
+
+                // Draw tool/weapon based on current tool
+                if (isMe && currentTool === 'hammer') {
+                    // Pickaxe animation
+                    const swingProgress = toolSwingTime > 0 ? (Date.now() - toolSwingTime) / toolSwingDuration : 0;
+                    const swingAngle = swingProgress < 1 ? Math.sin(swingProgress * Math.PI) * 0.8 : 0;
+
+                    const pickAngle = player.angle + swingAngle;
+                    const handleLen = 25;
+                    const pickLen = 15;
+
+                    // Handle
+                    ctx.strokeStyle = '#8B4513';
+                    ctx.lineWidth = 4;
+                    ctx.beginPath();
+                    ctx.moveTo(player.x + Math.cos(player.angle) * 8, player.y + Math.sin(player.angle) * 8);
+                    ctx.lineTo(player.x + Math.cos(pickAngle) * handleLen, player.y + Math.sin(pickAngle) * handleLen);
+                    ctx.stroke();
+
+                    // Pickaxe head
+                    ctx.strokeStyle = '#666666';
+                    ctx.lineWidth = 6;
+                    ctx.lineCap = 'round';
+                    const headX = player.x + Math.cos(pickAngle) * handleLen;
+                    const headY = player.y + Math.sin(pickAngle) * handleLen;
+                    ctx.beginPath();
+                    ctx.moveTo(headX + Math.cos(pickAngle + Math.PI/2) * pickLen, headY + Math.sin(pickAngle + Math.PI/2) * pickLen);
+                    ctx.lineTo(headX + Math.cos(pickAngle - Math.PI/2) * pickLen, headY + Math.sin(pickAngle - Math.PI/2) * pickLen);
+                    ctx.stroke();
+                } else if (isMe && currentTool === 'repair') {
+                    // Wrench animation
+                    const swingProgress = toolSwingTime > 0 ? (Date.now() - toolSwingTime) / toolSwingDuration : 0;
+                    const swingAngle = swingProgress < 1 ? Math.sin(swingProgress * Math.PI) * 0.5 : 0;
+
+                    const wrenchAngle = player.angle + swingAngle;
+                    const wrenchLen = 22;
+
+                    // Wrench handle
+                    ctx.strokeStyle = '#888888';
+                    ctx.lineWidth = 5;
+                    ctx.beginPath();
+                    ctx.moveTo(player.x + Math.cos(player.angle) * 8, player.y + Math.sin(player.angle) * 8);
+                    ctx.lineTo(player.x + Math.cos(wrenchAngle) * wrenchLen, player.y + Math.sin(wrenchAngle) * wrenchLen);
+                    ctx.stroke();
+
+                    // Wrench head
+                    ctx.fillStyle = '#666666';
+                    const headX = player.x + Math.cos(wrenchAngle) * wrenchLen;
+                    const headY = player.y + Math.sin(wrenchAngle) * wrenchLen;
+                    ctx.beginPath();
+                    ctx.arc(headX, headY, 5, 0, Math.PI * 2);
+                    ctx.fill();
+                } else {
+                    // Gun (in hands)
+                    ctx.strokeStyle = '#333333';
+                    ctx.lineWidth = 6;
+                    ctx.beginPath();
+                    ctx.moveTo(player.x + Math.cos(player.angle) * 10, player.y + Math.sin(player.angle) * 10);
+                    ctx.lineTo(player.x + Math.cos(player.angle) * 28, player.y + Math.sin(player.angle) * 28);
+                    ctx.stroke();
+                }
+
+                // Legs
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 5;
+
+                // Left leg
+                ctx.beginPath();
+                ctx.moveTo(player.x - 4, player.y + 12);
+                ctx.lineTo(player.x - 6, player.y + 22);
+                ctx.stroke();
+
+                // Right leg
+                ctx.beginPath();
+                ctx.moveTo(player.x + 4, player.y + 12);
+                ctx.lineTo(player.x + 6, player.y + 22);
+                ctx.stroke();
+
+                ctx.shadowBlur = 0;
+
+                // Name
+                ctx.fillStyle = isMe ? '#00ff88' : 'white';
+                ctx.font = isMe ? 'bold 14px Arial' : '12px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(player.name || 'Player', player.x, player.y - 30);
+
+                // Health bar
+                if (player.health !== undefined) {
+                    const barWidth = 40;
+                    const barHeight = 5;
+                    ctx.fillStyle = '#ff0000';
+                    ctx.fillRect(player.x - barWidth/2, player.y + 28, barWidth, barHeight);
+                    ctx.fillStyle = '#00ff00';
+                    ctx.fillRect(player.x - barWidth/2, player.y + 28, (player.health / player.maxHealth) * barWidth, barHeight);
+                }
+            });
+
+            // Update and draw blade swirl
+            if (abilityActive && currentAbility === 'bladeswirl' && myPlayer) {
+                bladeAngle += 0.1; // Spin speed
+
+                blades.forEach((blade, index) => {
+                    const currentAngle = bladeAngle + blade.angle;
+                    const bladeX = myPlayer.x + Math.cos(currentAngle) * blade.radius;
+                    const bladeY = myPlayer.y + Math.sin(currentAngle) * blade.radius;
+
+                    // Draw blade
+                    ctx.save();
+                    ctx.translate(bladeX, bladeY);
+                    ctx.rotate(currentAngle);
+
+                    // Blade shape (glowing cyan blade)
+                    ctx.fillStyle = '#00ffff';
+                    ctx.shadowBlur = 15;
+                    ctx.shadowColor = '#00ffff';
+
+                    ctx.beginPath();
+                    ctx.moveTo(-15, -5);
+                    ctx.lineTo(15, 0);
+                    ctx.lineTo(-15, 5);
+                    ctx.closePath();
+                    ctx.fill();
+
+                    ctx.shadowBlur = 0;
+                    ctx.restore();
+
+                    // Check blade collisions with obstacles
+                    if (!blade.totalHits) blade.totalHits = 0;
+
+                    obstacles.forEach(obs => {
+                        const centerX = obs.x + obs.width / 2;
+                        const centerY = obs.y + obs.height / 2;
+                        const dx = bladeX - centerX;
+                        const dy = bladeY - centerY;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+
+                        if (dist < obs.width / 2 + 15) {
+                            // Hit obstacle!
+                            const now = Date.now();
+                            if (!blade.lastObstacleHit) blade.lastObstacleHit = {};
+                            if (!blade.lastObstacleHit[obs.id] || now - blade.lastObstacleHit[obs.id] > 200) {
+                                send({
+                                    type: 'obstacleHit',
+                                    obstacleId: obs.id,
+                                    damage: 20
+                                });
+                                blade.lastObstacleHit[obs.id] = now;
+                                blade.totalHits++;
+
+                                // If blade has hit 3 blocks, deactivate ability early
+                                if (blade.totalHits >= 3) {
+                                    abilityActive = false;
+                                    blades = [];
+                                    currentAbility = null;
+                                    document.getElementById('abilityName').textContent = 'None';
+                                    document.getElementById('abilityName').style.color = '#00ffff';
+                                }
+                            }
+                        }
+                    });
+
+                    // Check blade collisions with other players (with cooldown to prevent spam)
+                    Object.values(players).forEach(otherPlayer => {
+                        if (otherPlayer.id !== playerId && otherPlayer.health > 0) {
+                            const dx = bladeX - otherPlayer.x;
+                            const dy = bladeY - otherPlayer.y;
+                            const dist = Math.sqrt(dx * dx + dy * dy);
+
+                            if (dist < PLAYER_SIZE + 10) {
+                                // Hit! Send damage (with 500ms cooldown per player)
+                                const now = Date.now();
+                                if (!blade.lastHit) blade.lastHit = {};
+                                if (!blade.lastHit[otherPlayer.id] || now - blade.lastHit[otherPlayer.id] > 500) {
+                                    if (ws && ws.readyState === WebSocket.OPEN) {
+                                        ws.send(JSON.stringify({
+                                            type: 'bulletHit',
+                                            targetId: otherPlayer.id,
+                                            damage: 30
+                                        }));
+                                        blade.lastHit[otherPlayer.id] = now;
+                                    }
+                                }
+                            }
+                        }
+                    });
+                });
+            }
+
+            // Restore context
+            ctx.restore();
+
+            // Draw minimap
+            if (myPlayer) {
+                const minimapSize = 200;
+                const minimapX = canvas.width - minimapSize - 20;
+                const minimapY = 20;
+
+                // Minimap background
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                ctx.fillRect(minimapX, minimapY, minimapSize, minimapSize);
+
+                // Minimap border
+                ctx.strokeStyle = '#00ff88';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(minimapX, minimapY, minimapSize, minimapSize);
+
+                const scaleX = minimapSize / MAP_WIDTH;
+                const scaleY = minimapSize / MAP_HEIGHT;
+
+                // Draw obstacles on minimap
+                ctx.fillStyle = '#00ffff';
+                obstacles.forEach(obs => {
+                    ctx.fillRect(
+                        minimapX + obs.x * scaleX,
+                        minimapY + obs.y * scaleY,
+                        obs.width * scaleX,
+                        obs.height * scaleY
+                    );
+                });
+
+                // Draw pickups on minimap
+                ctx.fillStyle = '#ffff00';
+                pickups.forEach(pickup => {
+                    ctx.beginPath();
+                    ctx.arc(
+                        minimapX + pickup.x * scaleX,
+                        minimapY + pickup.y * scaleY,
+                        3, 0, Math.PI * 2
+                    );
+                    ctx.fill();
+                });
+
+                // Draw players on minimap
+                Object.values(players).forEach(player => {
+                    ctx.fillStyle = player.id === playerId ? '#00ff88' : '#ff6b6b';
+                    ctx.beginPath();
+                    ctx.arc(
+                        minimapX + player.x * scaleX,
+                        minimapY + player.y * scaleY,
+                        4, 0, Math.PI * 2
+                    );
+                    ctx.fill();
+                });
+
+                // Minimap label
+                ctx.fillStyle = '#00ff88';
+                ctx.font = 'bold 12px Arial';
+                ctx.fillText('MAP', minimapX + 5, minimapY + 15);
+            }
+
+            // Debug info - bottom left
+            ctx.font = '14px Arial';
+
+            // FPS
+            ctx.fillStyle = fps < 30 ? '#ff0000' : (fps < 50 ? '#ffff00' : '#00ff00');
+            ctx.fillText(`FPS: ${fps}`, 10, canvas.height - 80);
+
+            // Ping
+            ctx.fillStyle = ping > 200 ? '#ff0000' : (ping > 100 ? '#ffff00' : '#00ff00');
+            ctx.fillText(`Ping: ${ping}ms`, 10, canvas.height - 60);
+
+            // Position
+            ctx.fillStyle = 'white';
+            if (myPlayer) {
+                ctx.fillText(`Pos: (${Math.round(myPlayer.x)}, ${Math.round(myPlayer.y)})`, 10, canvas.height - 40);
+            }
+
+            // Weapon
+            ctx.fillStyle = '#ffff00';
+            ctx.fillText(`Weapon: ${WEAPONS[currentWeapon].name}`, 10, canvas.height - 20);
+
+            // Objects
+            ctx.fillStyle = '#888888';
+            ctx.fillText(`${obstacles.length} walls | ${pickups.length} items`, 10, canvas.height - 0);
+
+            // Update UI
+            updateUI();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        gameLoop();
+    </script>
+</body>
+</html>

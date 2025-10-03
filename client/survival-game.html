@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multiplayer Survival Shooter</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; overflow: hidden; cursor: crosshair; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useCallback, useRef } = React;
+
+        const SurvivalGame = () => {
+          const CANVAS_WIDTH = window.innerWidth;
+          const CANVAS_HEIGHT = window.innerHeight;
+          const PLAYER_SIZE = 20;
+          const BULLET_SPEED = 10;
+          const MOVE_SPEED = 5;
+          const UPDATE_INTERVAL = 50; // Send updates every 50ms instead of every frame
+
+          // Game state
+          const [playerId, setPlayerId] = useState(null);
+          const [player, setPlayer] = useState(null);
+          const [otherPlayers, setOtherPlayers] = useState(new Map());
+          const [bullets, setBullets] = useState([]);
+          const [connected, setConnected] = useState(false);
+          const [showServerSelect, setShowServerSelect] = useState(true);
+          const [showCharacterCreation, setShowCharacterCreation] = useState(false);
+          const [selectedServer, setSelectedServer] = useState(null);
+          const [playerName, setPlayerName] = useState('');
+          const [playerColor, setPlayerColor] = useState('#4ecdc4');
+          const [customServerInput, setCustomServerInput] = useState('');
+          const [currentTunnelUrl, setCurrentTunnelUrl] = useState(null);
+
+          const canvasRef = useRef(null);
+          const wsRef = useRef(null);
+          const keysPressed = useRef({});
+          const mousePos = useRef({ x: 0, y: 0 });
+          const animationRef = useRef(null);
+          const lastUpdateTime = useRef(0);
+
+          // Load current tunnel URL
+          useEffect(() => {
+            fetch('./server-url.json')
+              .then(res => res.json())
+              .then(data => setCurrentTunnelUrl(data.url))
+              .catch(() => console.log('No tunnel URL file found'));
+          }, []);
+
+          // Server list
+          const getAvailableServers = () => {
+            const servers = [
+              { name: 'Local Server', url: 'ws://localhost:3001', icon: '🏠' }
+            ];
+            if (currentTunnelUrl) {
+              servers.push({ name: 'Current Tunnel', url: currentTunnelUrl, icon: '🌐', highlight: true });
+            }
+            return servers;
+          };
+
+          const availableServers = getAvailableServers();
+
+          // Color palette
+          const colorPalette = [
+            '#4ecdc4', '#ff6b6b', '#95e1d3', '#f38181',
+            '#aa96da', '#fcbad3', '#a8d8ea', '#ffffd2',
+            '#ffd93d', '#6bcf7f', '#ff8c42', '#c779d0'
+          ];
+
+          // Connect to server
+          const connectToServer = (serverUrl) => {
+            setSelectedServer(serverUrl);
+            setShowServerSelect(false);
+
+            const ws = new WebSocket(serverUrl);
+            wsRef.current = ws;
+
+            ws.onopen = () => {
+              setConnected(true);
+              setShowCharacterCreation(true);
+            };
+
+            ws.onmessage = (event) => {
+              const data = JSON.parse(event.data);
+
+              switch(data.type) {
+                case 'init':
+                  setPlayerId(data.playerId);
+                  setPlayer({
+                    id: data.playerId,
+                    x: CANVAS_WIDTH / 2,
+                    y: CANVAS_HEIGHT / 2,
+                    angle: 0,
+                    health: 100,
+                    maxHealth: 100,
+                    color: playerColor,
+                    name: playerName || 'Player'
+                  });
+
+                  const others = new Map();
+                  data.players.forEach(p => {
+                    if (p.id !== data.playerId) {
+                      others.set(p.id, { ...p, x: p.x || CANVAS_WIDTH / 2, y: p.y || CANVAS_HEIGHT / 2 });
+                    }
+                  });
+                  setOtherPlayers(others);
+                  setShowCharacterCreation(false);
+                  break;
+
+                case 'playerJoined':
+                  setOtherPlayers(prev => {
+                    const newMap = new Map(prev);
+                    newMap.set(data.player.id, { ...data.player, x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 });
+                    return newMap;
+                  });
+                  break;
+
+                case 'playerLeft':
+                  setOtherPlayers(prev => {
+                    const newMap = new Map(prev);
+                    newMap.delete(data.playerId);
+                    return newMap;
+                  });
+                  break;
+
+                case 'playerMoved':
+                  setOtherPlayers(prev => {
+                    const newMap = new Map(prev);
+                    const player = newMap.get(data.playerId);
+                    if (player) {
+                      player.x = data.x;
+                      player.y = data.y;
+                      player.angle = data.angle;
+                    }
+                    return newMap;
+                  });
+                  break;
+
+                case 'playerShot':
+                  setBullets(prev => [...prev, {
+                    id: data.bulletId,
+                    x: data.x,
+                    y: data.y,
+                    vx: data.vx,
+                    vy: data.vy,
+                    playerId: data.playerId
+                  }]);
+                  break;
+              }
+            };
+
+            ws.onclose = () => {
+              setConnected(false);
+              setShowServerSelect(true);
+              setPlayer(null);
+            };
+          };
+
+          // Submit character
+          const submitCharacter = () => {
+            if (playerName.trim().length < 2) {
+              alert('Please enter a name (at least 2 characters)');
+              return;
+            }
+            sendToServer({ type: 'updateName', name: playerName.trim() });
+          };
+
+          // Send to server
+          const sendToServer = (data) => {
+            if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+              wsRef.current.send(JSON.stringify(data));
+            }
+          };
+
+          // Mouse tracking
+          useEffect(() => {
+            const handleMouseMove = (e) => {
+              const canvas = canvasRef.current;
+              if (!canvas) return;
+              const rect = canvas.getBoundingClientRect();
+              mousePos.current = {
+                x: e.clientX - rect.left,
+                y: e.clientY - rect.top
+              };
+            };
+
+            const handleClick = () => {
+              if (!player) return;
+
+              const dx = mousePos.current.x - player.x;
+              const dy = mousePos.current.y - player.y;
+              const distance = Math.sqrt(dx * dx + dy * dy);
+
+              if (distance > 0) {
+                const bulletId = Date.now() + Math.random();
+                const vx = (dx / distance) * BULLET_SPEED;
+                const vy = (dy / distance) * BULLET_SPEED;
+
+                setBullets(prev => [...prev, {
+                  id: bulletId,
+                  x: player.x,
+                  y: player.y,
+                  vx,
+                  vy,
+                  playerId: playerId
+                }]);
+
+                sendToServer({
+                  type: 'shoot',
+                  bulletId,
+                  x: player.x,
+                  y: player.y,
+                  vx,
+                  vy
+                });
+              }
+            };
+
+            window.addEventListener('mousemove', handleMouseMove);
+            window.addEventListener('click', handleClick);
+
+            return () => {
+              window.removeEventListener('mousemove', handleMouseMove);
+              window.removeEventListener('click', handleClick);
+            };
+          }, [player, playerId]);
+
+          // Keyboard controls
+          useEffect(() => {
+            const handleKeyDown = (e) => {
+              keysPressed.current[e.key.toLowerCase()] = true;
+            };
+
+            const handleKeyUp = (e) => {
+              keysPressed.current[e.key.toLowerCase()] = false;
+            };
+
+            window.addEventListener('keydown', handleKeyDown);
+            window.addEventListener('keyup', handleKeyUp);
+
+            return () => {
+              window.removeEventListener('keydown', handleKeyDown);
+              window.removeEventListener('keyup', handleKeyUp);
+            };
+          }, []);
+
+          // Game loop
+          useEffect(() => {
+            if (!player) return;
+
+            const gameLoop = () => {
+              // Move player
+              let dx = 0, dy = 0;
+
+              if (keysPressed.current['w'] || keysPressed.current['arrowup']) dy -= MOVE_SPEED;
+              if (keysPressed.current['s'] || keysPressed.current['arrowdown']) dy += MOVE_SPEED;
+              if (keysPressed.current['a'] || keysPressed.current['arrowleft']) dx -= MOVE_SPEED;
+              if (keysPressed.current['d'] || keysPressed.current['arrowright']) dx += MOVE_SPEED;
+
+              const now = Date.now();
+              const shouldSendUpdate = now - lastUpdateTime.current > UPDATE_INTERVAL;
+
+              if (dx !== 0 || dy !== 0) {
+                setPlayer(prev => {
+                  const newX = Math.max(PLAYER_SIZE, Math.min(CANVAS_WIDTH - PLAYER_SIZE, prev.x + dx));
+                  const newY = Math.max(PLAYER_SIZE, Math.min(CANVAS_HEIGHT - PLAYER_SIZE, prev.y + dy));
+
+                  const angle = Math.atan2(mousePos.current.y - newY, mousePos.current.x - newX);
+
+                  // Only send update if enough time has passed
+                  if (shouldSendUpdate) {
+                    sendToServer({
+                      type: 'move',
+                      x: newX,
+                      y: newY,
+                      angle
+                    });
+                    lastUpdateTime.current = now;
+                  }
+
+                  return { ...prev, x: newX, y: newY, angle };
+                });
+              } else {
+                // Update angle even when not moving
+                const angle = Math.atan2(mousePos.current.y - player.y, mousePos.current.x - player.x);
+                setPlayer(prev => ({ ...prev, angle }));
+              }
+
+              // Update bullets
+              setBullets(prev => prev.filter(bullet => {
+                bullet.x += bullet.vx;
+                bullet.y += bullet.vy;
+                return bullet.x >= 0 && bullet.x <= CANVAS_WIDTH && bullet.y >= 0 && bullet.y <= CANVAS_HEIGHT;
+              }));
+
+              animationRef.current = requestAnimationFrame(gameLoop);
+            };
+
+            gameLoop();
+
+            return () => {
+              if (animationRef.current) {
+                cancelAnimationFrame(animationRef.current);
+              }
+            };
+          }, [player]);
+
+          // Render
+          useEffect(() => {
+            const canvas = canvasRef.current;
+            if (!canvas) return;
+
+            const ctx = canvas.getContext('2d');
+
+            const render = () => {
+              // Clear
+              ctx.fillStyle = '#1a1a2e';
+              ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+              // Draw grid
+              ctx.strokeStyle = '#16213e20';
+              ctx.lineWidth = 1;
+              for (let x = 0; x < CANVAS_WIDTH; x += 50) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, CANVAS_HEIGHT);
+                ctx.stroke();
+              }
+              for (let y = 0; y < CANVAS_HEIGHT; y += 50) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(CANVAS_WIDTH, y);
+                ctx.stroke();
+              }
+
+              // Draw bullets
+              bullets.forEach(bullet => {
+                ctx.fillStyle = '#ffeb3b'; // Yellow for all bullets
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = '#ffeb3b';
+                ctx.beginPath();
+                ctx.arc(bullet.x, bullet.y, 5, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+              });
+
+              // Draw other players
+              otherPlayers.forEach(p => {
+                // Body
+                ctx.fillStyle = p.color || '#ff6b6b';
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, PLAYER_SIZE, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Gun
+                ctx.strokeStyle = p.color || '#ff6b6b';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(p.x, p.y);
+                ctx.lineTo(
+                  p.x + Math.cos(p.angle || 0) * 25,
+                  p.y + Math.sin(p.angle || 0) * 25
+                );
+                ctx.stroke();
+
+                // Name
+                ctx.fillStyle = '#ffffff';
+                ctx.font = '12px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(p.name || 'Player', p.x, p.y - 30);
+              });
+
+              // Draw player
+              if (player) {
+                // Body
+                ctx.fillStyle = player.color;
+                ctx.beginPath();
+                ctx.arc(player.x, player.y, PLAYER_SIZE, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Gun
+                ctx.strokeStyle = player.color;
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(player.x, player.y);
+                ctx.lineTo(
+                  player.x + Math.cos(player.angle) * 25,
+                  player.y + Math.sin(player.angle) * 25
+                );
+                ctx.stroke();
+
+                // Name
+                ctx.fillStyle = '#00ff00';
+                ctx.font = 'bold 12px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(player.name, player.x, player.y - 30);
+
+                // Health bar
+                const barWidth = 40;
+                const barHeight = 5;
+                ctx.fillStyle = '#ff0000';
+                ctx.fillRect(player.x - barWidth/2, player.y + 25, barWidth, barHeight);
+                ctx.fillStyle = '#00ff00';
+                ctx.fillRect(player.x - barWidth/2, player.y + 25, (player.health / player.maxHealth) * barWidth, barHeight);
+              }
+
+              requestAnimationFrame(render);
+            };
+
+            render();
+          }, [player, otherPlayers, bullets, playerId]);
+
+          // Server selection screen
+          if (showServerSelect) {
+            const handleCustomServer = () => {
+              const input = customServerInput.trim();
+              if (input && (input.startsWith('ws://') || input.startsWith('wss://'))) {
+                connectToServer(input);
+              } else {
+                alert('Please enter a valid WebSocket URL');
+              }
+            };
+
+            return (
+              <div className="w-full h-screen bg-gray-900 text-white flex items-center justify-center p-4">
+                <div className="bg-gray-800 border-4 border-green-600 rounded-lg p-8 max-w-2xl w-full">
+                  <h1 className="text-4xl font-bold mb-2 text-center text-green-400">🎯 Multiplayer Survival Shooter 🎯</h1>
+                  <p className="text-center text-gray-400 mb-8">Select a server to join</p>
+
+                  <div className="space-y-4 mb-6">
+                    {availableServers.map((server, index) => (
+                      <button
+                        key={index}
+                        onClick={() => connectToServer(server.url)}
+                        className="w-full bg-gray-700 hover:bg-gray-600 border-2 border-green-600 hover:border-green-400 p-6 rounded-lg transition-all text-left flex items-center gap-4"
+                      >
+                        <div className="text-5xl">{server.icon}</div>
+                        <div className="flex-1">
+                          <div className="text-xl font-bold text-green-400">{server.name}</div>
+                          <div className="text-sm text-gray-400">{server.url}</div>
+                        </div>
+                        <div className="text-2xl text-green-400">→</div>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="border-t-2 border-gray-700 pt-6">
+                    <label className="block text-sm font-bold mb-2 text-green-400">Custom Server Address</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={customServerInput}
+                        onChange={(e) => setCustomServerInput(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && handleCustomServer()}
+                        placeholder="ws://192.168.1.100:3001 or wss://server.loca.lt"
+                        className="flex-1 bg-gray-700 border-2 border-gray-600 focus:border-green-600 px-4 py-3 rounded text-white outline-none"
+                      />
+                      <button
+                        onClick={handleCustomServer}
+                        className="bg-green-600 hover:bg-green-700 px-6 py-3 rounded font-bold transition-colors"
+                      >
+                        Connect
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
+          // Character creation
+          if (showCharacterCreation && connected) {
+            return (
+              <div className="w-full h-screen bg-gray-900 text-white flex items-center justify-center p-4">
+                <div className="bg-gray-800 border-4 border-green-600 rounded-lg p-8 max-w-md w-full">
+                  <h1 className="text-3xl font-bold mb-6 text-center text-green-400">🎯 Create Your Character 🎯</h1>
+
+                  <div className="mb-6">
+                    <label className="block text-sm font-bold mb-2 text-green-400">Player Name</label>
+                    <input
+                      type="text"
+                      value={playerName}
+                      onChange={(e) => setPlayerName(e.target.value.slice(0, 20))}
+                      onKeyPress={(e) => e.key === 'Enter' && submitCharacter()}
+                      placeholder="Enter your name..."
+                      className="w-full bg-gray-700 border-2 border-green-600 px-4 py-3 rounded text-white text-lg outline-none focus:border-green-400"
+                      maxLength={20}
+                      autoFocus
+                    />
+                  </div>
+
+                  <div className="mb-6">
+                    <label className="block text-sm font-bold mb-3 text-green-400">Choose Your Color</label>
+                    <div className="grid grid-cols-6 gap-2">
+                      {colorPalette.map(color => (
+                        <button
+                          key={color}
+                          onClick={() => setPlayerColor(color)}
+                          className={`w-10 h-10 rounded border-2 transition-all ${
+                            playerColor === color ? 'border-white scale-110' : 'border-gray-600 hover:border-gray-400'
+                          }`}
+                          style={{ backgroundColor: color }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={submitCharacter}
+                    disabled={playerName.trim().length < 2}
+                    className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-6 py-3 rounded font-bold text-lg transition-colors"
+                  >
+                    Enter the Battle
+                  </button>
+                </div>
+              </div>
+            );
+          }
+
+          // Loading
+          if (!player) {
+            return (
+              <div className="w-full h-screen bg-gray-900 text-white flex items-center justify-center">
+                <div className="text-center">
+                  <div className="text-4xl mb-4">🎯</div>
+                  <div className="text-xl mb-2">Connecting...</div>
+                </div>
+              </div>
+            );
+          }
+
+          // Game UI
+          return (
+            <div className="relative w-full h-screen bg-gray-900">
+              <canvas
+                ref={canvasRef}
+                width={CANVAS_WIDTH}
+                height={CANVAS_HEIGHT}
+                className="absolute top-0 left-0"
+              />
+
+              {/* HUD */}
+              <div className="absolute top-4 left-4 bg-black bg-opacity-70 text-white p-4 rounded">
+                <div className="font-bold text-green-400">{player.name}</div>
+                <div className="text-sm">HP: {player.health}/{player.maxHealth}</div>
+                <div className="text-sm">Players: {otherPlayers.size + 1}</div>
+              </div>
+
+              <div className="absolute top-4 right-4 bg-black bg-opacity-70 text-white p-4 rounded text-sm">
+                <div className="font-bold text-green-400 mb-2">Controls</div>
+                <div>WASD - Move</div>
+                <div>Mouse - Aim</div>
+                <div>Click - Shoot</div>
+              </div>
+            </div>
+          );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<SurvivalGame />);
+    </script>
+</body>
+</html>
