@@ -93,35 +93,47 @@ function generateTerrain() {
       let terrainType = 'grass';
       let speedModifier = 1.0;
 
-      // Use multiple octaves of Perlin noise for more organic terrain
-      const scale1 = 0.008; // Large biomes (bigger features)
-      const scale2 = 0.025; // Medium patches
-      const scale3 = 0.08;  // Small detail
+      // Much larger scale for coherent biomes
+      const scale1 = 0.003; // Very large biomes (lakes, forests)
+      const scale2 = 0.008; // Regional variation
+      const scale3 = 0.02;  // Local detail
 
       const noise1 = (noise(x * scale1, y * scale1) + 1) / 2;
       const noise2 = (noise(x * scale2, y * scale2) + 1) / 2;
       const noise3 = (noise(x * scale3, y * scale3) + 1) / 2;
 
-      // Combine with more emphasis on large features
-      const combinedNoise = noise1 * 0.5 + noise2 * 0.35 + noise3 * 0.15;
+      // Heavily favor large-scale features for coherent biomes
+      const baseNoise = noise1 * 0.75 + noise2 * 0.20 + noise3 * 0.05;
 
-      // Create varied terrain with larger biomes
-      if (combinedNoise < 0.28) {
+      // Use separate noise layer for moisture (affects grass vs forest)
+      const moistureNoise = (noise(x * 0.004 + 1000, y * 0.004 + 1000) + 1) / 2;
+
+      // Create distinct biomes with clearer boundaries
+      if (baseNoise < 0.30) {
+        // Water bodies (lakes, rivers)
         terrainType = 'water';
         speedModifier = 0.4;
-      } else if (combinedNoise < 0.38) {
+      } else if (baseNoise < 0.35) {
+        // Shoreline/wetlands transition
         terrainType = 'mud';
         speedModifier = 0.6;
-      } else if (combinedNoise < 0.65) {
-        terrainType = 'grass';
-        speedModifier = 1.0;
-      } else if (combinedNoise < 0.82) {
-        terrainType = 'forest';
-        speedModifier = 0.8;
-      } else {
-        // Rocky/sandy areas
+      } else if (baseNoise < 0.70) {
+        // Main land area - varies by moisture
+        if (moistureNoise > 0.6) {
+          terrainType = 'forest';
+          speedModifier = 0.8;
+        } else {
+          terrainType = 'grass';
+          speedModifier = 1.0;
+        }
+      } else if (baseNoise < 0.75) {
+        // Transition to highlands
         terrainType = 'mud';
         speedModifier = 0.7;
+      } else {
+        // Highland forests
+        terrainType = 'forest';
+        speedModifier = 0.8;
       }
 
       terrain.push({

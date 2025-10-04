@@ -93,35 +93,47 @@ function generateTerrain() {
       let terrainType = 'grass';
       let speedModifier = 1.0;
 
-      // Use multiple octaves of Perlin noise for more organic terrain
-      const scale1 = 0.008; // Large biomes (bigger features)
-      const scale2 = 0.025; // Medium patches
-      const scale3 = 0.08;  // Small detail
+      // Much larger scale for coherent biomes
+      const scale1 = 0.003; // Very large biomes (lakes, forests)
+      const scale2 = 0.008; // Regional variation
+      const scale3 = 0.02;  // Local detail
 
       const noise1 = (noise(x * scale1, y * scale1) + 1) / 2;
       const noise2 = (noise(x * scale2, y * scale2) + 1) / 2;
       const noise3 = (noise(x * scale3, y * scale3) + 1) / 2;
 
-      // Combine with more emphasis on large features
-      const combinedNoise = noise1 * 0.5 + noise2 * 0.35 + noise3 * 0.15;
+      // Heavily favor large-scale features for coherent biomes
+      const baseNoise = noise1 * 0.75 + noise2 * 0.20 + noise3 * 0.05;
 
-      // Create varied terrain with larger biomes
-      if (combinedNoise < 0.28) {
+      // Use separate noise layer for moisture (affects grass vs forest)
+      const moistureNoise = (noise(x * 0.004 + 1000, y * 0.004 + 1000) + 1) / 2;
+
+      // Create distinct biomes with clearer boundaries
+      if (baseNoise < 0.30) {
+        // Water bodies (lakes, rivers)
         terrainType = 'water';
         speedModifier = 0.4;
-      } else if (combinedNoise < 0.38) {
+      } else if (baseNoise < 0.35) {
+        // Shoreline/wetlands transition
         terrainType = 'mud';
         speedModifier = 0.6;
-      } else if (combinedNoise < 0.65) {
-        terrainType = 'grass';
-        speedModifier = 1.0;
-      } else if (combinedNoise < 0.82) {
-        terrainType = 'forest';
-        speedModifier = 0.8;
-      } else {
-        // Rocky/sandy areas
+      } else if (baseNoise < 0.70) {
+        // Main land area - varies by moisture
+        if (moistureNoise > 0.6) {
+          terrainType = 'forest';
+          speedModifier = 0.8;
+        } else {
+          terrainType = 'grass';
+          speedModifier = 1.0;
+        }
+      } else if (baseNoise < 0.75) {
+        // Transition to highlands
         terrainType = 'mud';
         speedModifier = 0.7;
+      } else {
+        // Highland forests
+        terrainType = 'forest';
+        speedModifier = 0.8;
       }
 
       terrain.push({
@@ -192,63 +204,128 @@ function generateRoads(buildings, terrain) {
     }
   }
 
-  // Step 2: Connect buildings within same zone
-  for (let i = 0; i < buildings.length; i++) {
-    const buildingA = buildings[i];
+  // Step 2: Create road network using minimum spanning tree per zone
+  const zones = {};
 
-    // Find closest building in same zone or nearest neighbor
-    let closestDist = Infinity;
-    let closestBuilding = null;
+  // Group buildings by zone
+  for (const building of buildings) {
+    const zoneName = building.zoneName || 'default';
+    if (!zones[zoneName]) {
+      zones[zoneName] = [];
+    }
+    zones[zoneName].push(building);
+  }
 
-    for (let j = 0; j < buildings.length; j++) {
-      if (i === j) continue;
-      const buildingB = buildings[j];
-      const dist = Math.hypot(buildingA.x - buildingB.x, buildingA.y - buildingB.y);
+  // Helper function to create road between two buildings
+  function createRoad(buildingA, buildingB) {
+    const startX = buildingA.x + buildingA.width / 2;
+    const startY = buildingA.y + buildingA.height / 2;
+    const endX = buildingB.x + buildingB.width / 2;
+    const endY = buildingB.y + buildingB.height / 2;
 
-      // Prioritize same-zone connections
-      const sameZone = buildingA.zoneName === buildingB.zoneName;
-      const effectiveDist = sameZone ? dist * 0.5 : dist; // Half distance for same zone
+    const roadWidth = tileSize;
 
-      if (effectiveDist < closestDist) {
-        closestDist = effectiveDist;
-        closestBuilding = buildingB;
+    // Horizontal segment
+    for (let x = Math.min(startX, endX); x < Math.max(startX, endX); x += tileSize) {
+      for (let offsetY = -roadWidth / 2; offsetY < roadWidth / 2; offsetY += tileSize) {
+        const rx = Math.floor(x / tileSize) * tileSize;
+        const ry = Math.floor((startY + offsetY) / tileSize) * tileSize;
+        const tile = terrain.find(t => t.x === rx && t.y === ry);
+        if (tile && tile.type !== 'water') {
+          tile.type = 'road';
+          tile.speedModifier = 1.3;
+        }
       }
     }
 
-    if (closestBuilding && closestDist < 2000) { // Only connect if close enough
-      // Create road path between buildings
-      const startX = buildingA.x + buildingA.width / 2;
-      const startY = buildingA.y + buildingA.height / 2;
-      const endX = closestBuilding.x + closestBuilding.width / 2;
-      const endY = closestBuilding.y + closestBuilding.height / 2;
+    // Vertical segment
+    for (let y = Math.min(startY, endY); y < Math.max(startY, endY); y += tileSize) {
+      for (let offsetX = -roadWidth / 2; offsetX < roadWidth / 2; offsetX += tileSize) {
+        const rx = Math.floor((endX + offsetX) / tileSize) * tileSize;
+        const ry = Math.floor(y / tileSize) * tileSize;
+        const tile = terrain.find(t => t.x === rx && t.y === ry);
+        if (tile && tile.type !== 'water') {
+          tile.type = 'road';
+          tile.speedModifier = 1.3;
+        }
+      }
+    }
+  }
 
-      // Manhattan path (simpler than curved)
-      const roadWidth = tileSize;
+  // Connect buildings within each zone using simple MST approach
+  for (const zoneName in zones) {
+    const zoneBuildings = zones[zoneName];
+    if (zoneBuildings.length < 2) continue;
 
-      // Horizontal segment
-      for (let x = Math.min(startX, endX); x < Math.max(startX, endX); x += tileSize) {
-        for (let offsetY = -roadWidth / 2; offsetY < roadWidth / 2; offsetY += tileSize) {
-          const rx = Math.floor(x / tileSize) * tileSize;
-          const ry = Math.floor((startY + offsetY) / tileSize) * tileSize;
-          const tile = terrain.find(t => t.x === rx && t.y === ry);
-          if (tile && tile.type !== 'water') {
-            tile.type = 'road';
-            tile.speedModifier = 1.3; // Faster on roads
+    const connected = new Set();
+    connected.add(zoneBuildings[0]);
+
+    // Connect each building to the nearest already-connected building
+    while (connected.size < zoneBuildings.length) {
+      let minDist = Infinity;
+      let closestPair = null;
+
+      for (const connectedBuilding of connected) {
+        for (const building of zoneBuildings) {
+          if (connected.has(building)) continue;
+
+          const dist = Math.hypot(
+            connectedBuilding.x - building.x,
+            connectedBuilding.y - building.y
+          );
+
+          if (dist < minDist) {
+            minDist = dist;
+            closestPair = [connectedBuilding, building];
           }
         }
       }
 
-      // Vertical segment
-      for (let y = Math.min(startY, endY); y < Math.max(startY, endY); y += tileSize) {
-        for (let offsetX = -roadWidth / 2; offsetX < roadWidth / 2; offsetX += tileSize) {
-          const rx = Math.floor((endX + offsetX) / tileSize) * tileSize;
-          const ry = Math.floor(y / tileSize) * tileSize;
-          const tile = terrain.find(t => t.x === rx && t.y === ry);
-          if (tile && tile.type !== 'water') {
-            tile.type = 'road';
-            tile.speedModifier = 1.3; // Faster on roads
+      if (closestPair) {
+        createRoad(closestPair[0], closestPair[1]);
+        connected.add(closestPair[1]);
+      } else {
+        break;
+      }
+    }
+  }
+
+  // Also connect nearest zones to create a full map network
+  const zoneNames = Object.keys(zones);
+  if (zoneNames.length > 1) {
+    const zoneConnected = new Set();
+    zoneConnected.add(zoneNames[0]);
+
+    while (zoneConnected.size < zoneNames.length) {
+      let minDist = Infinity;
+      let closestPair = null;
+
+      for (const connectedZone of zoneConnected) {
+        for (const zoneName of zoneNames) {
+          if (zoneConnected.has(zoneName)) continue;
+
+          // Find closest buildings between zones
+          for (const buildingA of zones[connectedZone]) {
+            for (const buildingB of zones[zoneName]) {
+              const dist = Math.hypot(
+                buildingA.x - buildingB.x,
+                buildingA.y - buildingB.y
+              );
+
+              if (dist < minDist && dist < 3000) { // Max inter-zone distance
+                minDist = dist;
+                closestPair = [buildingA, buildingB, zoneName];
+              }
+            }
           }
         }
+      }
+
+      if (closestPair) {
+        createRoad(closestPair[0], closestPair[1]);
+        zoneConnected.add(closestPair[2]);
+      } else {
+        break;
       }
     }
   }
