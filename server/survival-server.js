@@ -295,9 +295,12 @@ wss.on('connection', (ws) => {
             obstacles: gameState.obstacles
           });
 
+          // Send terrain seed and road tiles
+          const roadTiles = gameState.terrain.filter(t => t.type === 'road');
           sendToClient(ws, {
             type: 'terrainUpdate',
-            terrainSeed: TERRAIN_SEED
+            terrainSeed: TERRAIN_SEED,
+            roads: roadTiles
           });
 
           sendToClient(ws, {

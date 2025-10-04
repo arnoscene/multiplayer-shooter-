@@ -39,6 +39,41 @@ export class TerrainRenderer {
             const color = this.terrainColors[tile.type] || this.terrainColors.grass;
             this.ctx.fillStyle = color;
             this.ctx.fillRect(tile.x, tile.y, tile.size, tile.size);
+
+            // Add grass texture pattern
+            if (tile.type === 'grass') {
+                this.ctx.fillStyle = 'rgba(34, 139, 34, 0.3)';
+                // Draw small dots in a scattered pattern for grass blades
+                for (let i = 0; i < 8; i++) {
+                    const dotX = tile.x + (i % 4) * 12 + 5;
+                    const dotY = tile.y + Math.floor(i / 4) * 25 + 10;
+                    this.ctx.fillRect(dotX, dotY, 2, 4);
+                    this.ctx.fillRect(dotX + 20, dotY + 8, 2, 3);
+                }
+            }
+
+            // Add tree obstacles in forest tiles
+            if (tile.type === 'forest') {
+                this.ctx.fillStyle = '#0d3d0d'; // Darker green for tree trunks
+                // Draw 3-4 tree circles per forest tile for visual density
+                const treePositions = [
+                    { x: 10, y: 10, r: 8 },
+                    { x: 35, y: 15, r: 6 },
+                    { x: 15, y: 35, r: 7 },
+                    { x: 38, y: 38, r: 5 }
+                ];
+
+                treePositions.forEach(tree => {
+                    this.ctx.beginPath();
+                    this.ctx.arc(tile.x + tree.x, tile.y + tree.y, tree.r, 0, Math.PI * 2);
+                    this.ctx.fill();
+
+                    // Add lighter green foliage outline
+                    this.ctx.strokeStyle = '#2d7d2d';
+                    this.ctx.lineWidth = 2;
+                    this.ctx.stroke();
+                });
+            }
         });
     }
 

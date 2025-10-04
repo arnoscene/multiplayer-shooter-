@@ -1084,6 +1084,19 @@
                 // Generate terrain locally with seed from server
                 terrain = generateTerrain();
                 console.log(`Generated ${terrain.length} terrain tiles locally with seed: ${TERRAIN_SEED}`);
+
+                // Apply roads from server
+                if (data.roads && data.roads.length > 0) {
+                    data.roads.forEach(road => {
+                        const tile = terrain.find(t => t.x === road.x && t.y === road.y);
+                        if (tile) {
+                            tile.type = 'road';
+                            tile.speedModifier = 1.3;
+                        }
+                    });
+                    console.log(`Applied ${data.roads.length} road tiles from server`);
+                }
+
                 loadingSteps.terrain = true;
                 loadingStatus.textContent = 'Terrain generated';
                 updateLoadingProgress();
