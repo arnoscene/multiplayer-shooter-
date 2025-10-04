@@ -519,8 +519,8 @@
         window.addEventListener('resize', resizeCanvas);
 
         // Map size (100m = 5000px) - Using constants from module
-        const Constants.MAP_WIDTH = Constants.Constants.MAP_WIDTH;
-        const Constants.MAP_HEIGHT = Constants.Constants.MAP_HEIGHT;
+        const MAP_WIDTH = Constants.MAP_WIDTH;
+        const MAP_HEIGHT = Constants.MAP_HEIGHT;
 
         // Camera for following player
         let cameraX = 0;
@@ -539,7 +539,7 @@
         const keys = {};
         const mouse = { x: canvas.width / 2, y: canvas.height / 2 };
 
-        const Constants.PLAYER_SIZE = Constants.Constants.PLAYER_SIZE;
+        const PLAYER_SIZE = Constants.PLAYER_SIZE;
         const MOVE_SPEED = Constants.MOVE_SPEED;
 
         // Tool swing animation
@@ -1669,47 +1669,6 @@
 
             // Update UI is now handled by updateUI() function called separately
 
-            // Update camera to follow player
-            if (myPlayer) {
-                cameraX = myPlayer.x - canvas.width / 2;
-                cameraY = myPlayer.y - canvas.height / 2;
-
-                // Clamp camera to map bounds
-                cameraX = Math.max(0, Math.min(Constants.Constants.MAP_WIDTH - canvas.width, cameraX));
-                cameraY = Math.max(0, Math.min(Constants.Constants.MAP_HEIGHT - canvas.height, cameraY));
-            }
-
-            // Clear canvas
-            ctx.fillStyle = '#0a0e27';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            // Save context and translate for camera
-            ctx.save();
-            ctx.translate(-cameraX, -cameraY);
-
-            // Draw grid (only visible area, less dense)
-            ctx.strokeStyle = '#1a2040';
-            ctx.lineWidth = 1;
-            const gridStartX = Math.floor(cameraX / 100) * 100;
-            const gridStartY = Math.floor(cameraY / 100) * 100;
-            for (let x = gridStartX; x < cameraX + canvas.width + 100; x += 100) {
-                ctx.beginPath();
-                ctx.moveTo(x, Math.max(0, cameraY));
-                ctx.lineTo(x, Math.min(Constants.Constants.MAP_HEIGHT, cameraY + canvas.height));
-                ctx.stroke();
-            }
-            for (let y = gridStartY; y < cameraY + canvas.height + 100; y += 100) {
-                ctx.beginPath();
-                ctx.moveTo(Math.max(0, cameraX), y);
-                ctx.lineTo(Math.min(Constants.Constants.MAP_WIDTH, cameraX + canvas.width), y);
-                ctx.stroke();
-            }
-
-            // Draw map bounds (only if visible)
-            ctx.strokeStyle = '#ff0000';
-            ctx.lineWidth = 5;
-            ctx.strokeRect(0, 0, Constants.Constants.MAP_WIDTH, Constants.Constants.MAP_HEIGHT);
-
             // Interpolate other players' positions for smooth movement
             Object.values(players).forEach(player => {
                 if (player.id !== playerId && player.targetX !== undefined) {
@@ -2231,6 +2190,16 @@
                         }
                     });
                 });
+            }
+
+            // Update camera to follow player
+            if (myPlayer) {
+                cameraX = myPlayer.x - canvas.width / 2;
+                cameraY = myPlayer.y - canvas.height / 2;
+
+                // Clamp camera to map bounds
+                cameraX = Math.max(0, Math.min(Constants.MAP_WIDTH - canvas.width, cameraX));
+                cameraY = Math.max(0, Math.min(Constants.MAP_HEIGHT - canvas.height, cameraY));
             }
 
             // === RENDERING PHASE ===

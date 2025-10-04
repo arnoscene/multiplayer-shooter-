@@ -248,20 +248,23 @@ export class PlayerRenderer {
 
             this.ctx.shadowBlur = 0;
 
-            // Name
-            this.ctx.fillStyle = isMe ? '#00ff88' : 'white';
-            this.ctx.font = isMe ? 'bold 14px Arial' : '12px Arial';
-            this.ctx.textAlign = 'center';
-            this.ctx.fillText(player.name || 'Player', player.x, player.y - 30);
+            // Name and health bar (only for other players, not yourself)
+            if (!isMe) {
+                // Name
+                this.ctx.fillStyle = 'white';
+                this.ctx.font = '12px Arial';
+                this.ctx.textAlign = 'center';
+                this.ctx.fillText(player.name || 'Player', player.x, player.y - 30);
 
-            // Health bar
-            if (player.health !== undefined) {
-                const barWidth = 40;
-                const barHeight = 5;
-                this.ctx.fillStyle = '#ff0000';
-                this.ctx.fillRect(player.x - barWidth/2, player.y + 28, barWidth, barHeight);
-                this.ctx.fillStyle = '#00ff00';
-                this.ctx.fillRect(player.x - barWidth/2, player.y + 28, (player.health / player.maxHealth) * barWidth, barHeight);
+                // Health bar
+                if (player.health !== undefined) {
+                    const barWidth = 40;
+                    const barHeight = 5;
+                    this.ctx.fillStyle = '#ff0000';
+                    this.ctx.fillRect(player.x - barWidth/2, player.y + 28, barWidth, barHeight);
+                    this.ctx.fillStyle = '#00ff00';
+                    this.ctx.fillRect(player.x - barWidth/2, player.y + 28, (player.health / player.maxHealth) * barWidth, barHeight);
+                }
             }
         });
     }

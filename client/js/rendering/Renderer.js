@@ -75,16 +75,46 @@ export class Renderer {
             isMobile = false
         } = gameState;
 
-        // Clear canvas
-        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        // Clear canvas with background color
+        this.ctx.fillStyle = '#0a0e27';
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
         // Save context state
         this.ctx.save();
 
-        // Apply camera transform (centered on player)
+        // Calculate camera position
+        let cameraX = 0;
+        let cameraY = 0;
         if (myPlayer) {
-            this.ctx.translate(-myPlayer.x + this.canvas.width / 2, -myPlayer.y + this.canvas.height / 2);
+            cameraX = myPlayer.x - this.canvas.width / 2;
+            cameraY = myPlayer.y - this.canvas.height / 2;
         }
+
+        // Apply camera transform
+        this.ctx.translate(-cameraX, -cameraY);
+
+        // Draw grid (only visible area)
+        this.ctx.strokeStyle = '#1a2040';
+        this.ctx.lineWidth = 1;
+        const gridStartX = Math.floor(cameraX / 100) * 100;
+        const gridStartY = Math.floor(cameraY / 100) * 100;
+        for (let x = gridStartX; x < cameraX + this.canvas.width + 100; x += 100) {
+            this.ctx.beginPath();
+            this.ctx.moveTo(x, Math.max(0, cameraY));
+            this.ctx.lineTo(x, Math.min(5000, cameraY + this.canvas.height));
+            this.ctx.stroke();
+        }
+        for (let y = gridStartY; y < cameraY + this.canvas.height + 100; y += 100) {
+            this.ctx.beginPath();
+            this.ctx.moveTo(Math.max(0, cameraX), y);
+            this.ctx.lineTo(Math.min(5000, cameraX + this.canvas.width), y);
+            this.ctx.stroke();
+        }
+
+        // Draw map bounds
+        this.ctx.strokeStyle = '#ff0000';
+        this.ctx.lineWidth = 5;
+        this.ctx.strokeRect(0, 0, 5000, 5000);
 
         // Layer 1: Terrain (background)
         this.terrainRenderer.renderTerrain(terrain);
