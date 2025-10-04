@@ -78,17 +78,25 @@ export class PhysicsSystem {
                 const tile = this.terrain.find(t => t.x === tileX && t.y === tileY);
 
                 if (tile && tile.type === 'forest') {
-                    // Mark bullet as damaged by forest
-                    bullet.damagedByForest = true;
+                    // Check if trees are still alive
+                    const key = `${tileX},${tileY}`;
+                    const treeCover = this.terrainRenderer ? this.terrainRenderer.treeCover.get(key) : null;
+                    const treeHealth = treeCover ? treeCover.health : 100;
 
-                    // Damage tree cover (5 damage per bullet hit)
-                    if (this.terrainRenderer) {
-                        this.terrainRenderer.damageTreeCover(bullet.x, bullet.y, 5);
+                    if (treeHealth > 0) {
+                        // Trees are alive - slow bullet and damage them
+                        bullet.damagedByForest = true;
+
+                        // Damage tree cover (5 damage per bullet hit)
+                        if (this.terrainRenderer) {
+                            this.terrainRenderer.damageTreeCover(bullet.x, bullet.y, 5);
+                        }
+
+                        // Reduce bullet speed by 15% per frame when in forest
+                        bullet.vx *= 0.85;
+                        bullet.vy *= 0.85;
                     }
-
-                    // Reduce bullet speed by 15% per frame when in forest
-                    bullet.vx *= 0.85;
-                    bullet.vy *= 0.85;
+                    // If treeHealth is 0, bullet passes through at full speed (no slowdown)
                 } else if (bullet.damagedByForest) {
                     // Bullet exited forest - apply falloff (further 30% speed reduction)
                     bullet.vx *= 0.7;
