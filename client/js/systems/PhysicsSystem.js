@@ -60,15 +60,31 @@ export class PhysicsSystem {
             bullet.x += bullet.vx;
             bullet.y += bullet.vy;
 
-            // Check if bullet traveled too far or too slow (cleanup stuck bullets)
+            // Track distance traveled
             if (!bullet.distanceTraveled) bullet.distanceTraveled = 0;
             const speed = Math.sqrt(bullet.vx * bullet.vx + bullet.vy * bullet.vy);
             bullet.distanceTraveled += speed;
 
-            // Remove bullets that are stuck (speed too low) or traveled too far
-            if (speed < 0.5 || bullet.distanceTraveled > 3000) {
+            // Weapon-specific max ranges (balance adjustment)
+            const maxRanges = {
+                pistol: 800,
+                shotgun: 400,
+                smg: 600,
+                rifle: 1200,
+                sniper: 2000,
+                rocket: 1500
+            };
+            const maxRange = maxRanges[bullet.weapon] || 1000;
+
+            // Remove bullets that exceeded range or are stuck
+            if (speed < 0.5 || bullet.distanceTraveled > maxRange) {
                 return false;
             }
+
+            // Apply natural velocity falloff (air resistance)
+            // 0.5% speed reduction per frame simulates air drag
+            bullet.vx *= 0.995;
+            bullet.vy *= 0.995;
 
             // Check terrain for forest slowdown and tree damage
             if (this.terrain) {
