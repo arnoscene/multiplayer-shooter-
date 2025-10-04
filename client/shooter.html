@@ -498,8 +498,14 @@
         import * as MathUtils from './js/utils/math.js';
         import * as Helpers from './js/utils/helpers.js';
 
+        // Import rendering modules (Phase 2 refactoring)
+        import { Renderer } from './js/rendering/Renderer.js';
+
         const canvas = document.getElementById('game');
         const ctx = canvas.getContext('2d');
+
+        // Initialize main renderer (Phase 2 refactoring)
+        const renderer = new Renderer(ctx, canvas);
 
         // Set canvas size (leave space for toolbar)
         function resizeCanvas() {
@@ -513,8 +519,8 @@
         window.addEventListener('resize', resizeCanvas);
 
         // Map size (100m = 5000px) - Using constants from module
-        const MAP_WIDTH = Constants.MAP_WIDTH;
-        const MAP_HEIGHT = Constants.MAP_HEIGHT;
+        const Constants.MAP_WIDTH = Constants.Constants.MAP_WIDTH;
+        const Constants.MAP_HEIGHT = Constants.Constants.MAP_HEIGHT;
 
         // Camera for following player
         let cameraX = 0;
@@ -533,7 +539,7 @@
         const keys = {};
         const mouse = { x: canvas.width / 2, y: canvas.height / 2 };
 
-        const PLAYER_SIZE = Constants.PLAYER_SIZE;
+        const Constants.PLAYER_SIZE = Constants.Constants.PLAYER_SIZE;
         const MOVE_SPEED = Constants.MOVE_SPEED;
 
         // Tool swing animation
@@ -796,12 +802,12 @@
             document.getElementById('scrapCount').textContent = myPlayer.scrap || 0;
 
             // Update ammo
-            const currentAmmo = weaponAmmo[currentWeapon] ?? WEAPONS[currentWeapon]?.ammo;
+            const currentAmmo = weaponAmmo[currentWeapon] ?? Constants.WEAPONS[currentWeapon]?.ammo;
             document.getElementById('ammoCount').textContent = currentAmmo === Infinity ? '∞' : currentAmmo;
 
             // Update weapon label
-            if (currentWeapon && WEAPONS[currentWeapon]) {
-                document.getElementById('weaponLabel').textContent = WEAPONS[currentWeapon].name;
+            if (currentWeapon && Constants.WEAPONS[currentWeapon]) {
+                document.getElementById('weaponLabel').textContent = Constants.WEAPONS[currentWeapon].name;
             }
         }
 
@@ -1129,7 +1135,7 @@
                                 myPlayer.weapon = weaponType;
                                 // Initialize ammo if first time picking up
                                 if (weaponAmmo[weaponType] === undefined) {
-                                    weaponAmmo[weaponType] = WEAPONS[weaponType].ammo;
+                                    weaponAmmo[weaponType] = Constants.WEAPONS[weaponType].ammo;
                                 }
                             }
                         }
@@ -1566,7 +1572,7 @@
                 return;
             }
 
-            const weapon = WEAPONS[currentWeapon];
+            const weapon = Constants.WEAPONS[currentWeapon];
 
             // Check fire rate
             if (now - lastShot < weapon.fireRate) return;
@@ -1669,8 +1675,8 @@
                 cameraY = myPlayer.y - canvas.height / 2;
 
                 // Clamp camera to map bounds
-                cameraX = Math.max(0, Math.min(MAP_WIDTH - canvas.width, cameraX));
-                cameraY = Math.max(0, Math.min(MAP_HEIGHT - canvas.height, cameraY));
+                cameraX = Math.max(0, Math.min(Constants.Constants.MAP_WIDTH - canvas.width, cameraX));
+                cameraY = Math.max(0, Math.min(Constants.Constants.MAP_HEIGHT - canvas.height, cameraY));
             }
 
             // Clear canvas
@@ -1689,20 +1695,20 @@
             for (let x = gridStartX; x < cameraX + canvas.width + 100; x += 100) {
                 ctx.beginPath();
                 ctx.moveTo(x, Math.max(0, cameraY));
-                ctx.lineTo(x, Math.min(MAP_HEIGHT, cameraY + canvas.height));
+                ctx.lineTo(x, Math.min(Constants.Constants.MAP_HEIGHT, cameraY + canvas.height));
                 ctx.stroke();
             }
             for (let y = gridStartY; y < cameraY + canvas.height + 100; y += 100) {
                 ctx.beginPath();
                 ctx.moveTo(Math.max(0, cameraX), y);
-                ctx.lineTo(Math.min(MAP_WIDTH, cameraX + canvas.width), y);
+                ctx.lineTo(Math.min(Constants.Constants.MAP_WIDTH, cameraX + canvas.width), y);
                 ctx.stroke();
             }
 
             // Draw map bounds (only if visible)
             ctx.strokeStyle = '#ff0000';
             ctx.lineWidth = 5;
-            ctx.strokeRect(0, 0, MAP_WIDTH, MAP_HEIGHT);
+            ctx.strokeRect(0, 0, Constants.Constants.MAP_WIDTH, Constants.Constants.MAP_HEIGHT);
 
             // Interpolate other players' positions for smooth movement
             Object.values(players).forEach(player => {
@@ -1776,8 +1782,8 @@
                 let newY = myPlayer.y + dy;
 
                 // Clamp to map bounds
-                newX = Math.max(PLAYER_SIZE, Math.min(MAP_WIDTH - PLAYER_SIZE, newX));
-                newY = Math.max(PLAYER_SIZE, Math.min(MAP_HEIGHT - PLAYER_SIZE, newY));
+                newX = Math.max(Constants.PLAYER_SIZE, Math.min(Constants.MAP_WIDTH - Constants.PLAYER_SIZE, newX));
+                newY = Math.max(Constants.PLAYER_SIZE, Math.min(Constants.MAP_HEIGHT - Constants.PLAYER_SIZE, newY));
 
                 // Check obstacle collision with sliding
                 const checkCollision = (x, y) => {
@@ -1791,7 +1797,7 @@
                         const closestY = Math.max(obs.y, Math.min(y, obs.y + obs.height));
                         const distX = x - closestX;
                         const distY = y - closestY;
-                        if (distX * distX + distY * distY < PLAYER_SIZE * PLAYER_SIZE) {
+                        if (distX * distX + distY * distY < Constants.PLAYER_SIZE * Constants.PLAYER_SIZE) {
                             return true;
                         }
                     }
@@ -1933,7 +1939,7 @@
                     const dx = myPlayer.x - pickup.x;
                     const dy = myPlayer.y - pickup.y;
                     const dist = Math.sqrt(dx * dx + dy * dy);
-                    if (dist < PLAYER_SIZE + 15) {
+                    if (dist < Constants.PLAYER_SIZE + 15) {
                         // Only collect if we need it and haven't already sent
                         if (lastSentPickup.has(pickup.id)) return;
 
@@ -1962,7 +1968,7 @@
                                 canCollect = true;
                             } else {
                                 // Refill ammo for current weapon
-                                const weapon = WEAPONS[weaponType];
+                                const weapon = Constants.WEAPONS[weaponType];
                                 if (weapon.ammo !== Infinity) {
                                     weaponAmmo[weaponType] = weapon.ammo;
                                     canCollect = true;
@@ -2129,7 +2135,7 @@
                             const dy = bullet.y - player.y;
                             const distance = Math.sqrt(dx * dx + dy * dy);
 
-                            if (distance < PLAYER_SIZE + bullet.size) {
+                            if (distance < Constants.PLAYER_SIZE + bullet.size) {
                                 // Hit! Check if explosive
                                 if (bullet.explosive) {
                                     const explosionRadius = bullet.explosionRadius || 150;
@@ -2152,492 +2158,11 @@
                 }
 
                 return !bullet.hit &&
-                       bullet.x >= 0 && bullet.x <= MAP_WIDTH &&
-                       bullet.y >= 0 && bullet.y <= MAP_HEIGHT;
+                       bullet.x >= 0 && bullet.x <= Constants.MAP_WIDTH &&
+                       bullet.y >= 0 && bullet.y <= Constants.MAP_HEIGHT;
             });
 
-            // Draw terrain first (background layer)
-            terrain.forEach(tile => {
-                let color = '#228b22'; // default grass green
-                if (tile.type === 'road') color = '#555555'; // dark gray
-                else if (tile.type === 'mud') color = '#8b7355'; // brown
-                else if (tile.type === 'water') color = '#4682b4'; // steel blue
-                else if (tile.type === 'forest') color = '#1a5a1a'; // dark green
-
-                ctx.fillStyle = color;
-                ctx.fillRect(tile.x, tile.y, tile.size, tile.size);
-            });
-
-            // Draw floor tiles (building interiors)
-            floors.forEach(floor => {
-                let color = '#3a3a3a'; // default dark gray floor
-                if (floor.buildingType === 'wood') color = '#5c4033'; // wooden floor
-                else if (floor.buildingType === 'brick') color = '#4a4a4a'; // concrete floor
-                else if (floor.buildingType === 'stone') color = '#5a5a5a'; // stone floor
-
-                ctx.fillStyle = color;
-                ctx.fillRect(floor.x, floor.y, floor.size, floor.size);
-
-                // Add subtle grid lines for floor tiles
-                ctx.strokeStyle = 'rgba(0, 0, 0, 0.2)';
-                ctx.lineWidth = 1;
-                ctx.strokeRect(floor.x, floor.y, floor.size, floor.size);
-            });
-
-            // Draw obstacles (building blocks)
-            obstacles.forEach(obs => {
-                // Different colors based on block type
-                let color = '#00ffff'; // default cyan
-                if (obs.blockType === 'debris') {
-                    // Debris uses a lighter shade of the original material
-                    if (obs.originalType === 'brick') color = '#c8835e'; // lighter brick
-                    else if (obs.originalType === 'wood') color = '#b8733f'; // lighter wood
-                    else if (obs.originalType === 'stone') color = '#9fb0c0'; // lighter stone
-                    else if (obs.originalType === 'sand') color = '#f4d5a6'; // lighter sand
-                    else if (obs.originalType === 'metal') color = '#b8b8b8'; // lighter metal
-                    else if (obs.originalType === 'roof') color = '#b84545'; // lighter red
-                    else color = '#6a6a6a'; // default lighter gray
-                } else if (obs.blockType === 'brick') color = '#a0522d'; // sienna brown
-                else if (obs.blockType === 'wood') color = '#8b4513'; // saddle brown
-                else if (obs.blockType === 'stone') color = '#708090'; // slate gray
-                else if (obs.blockType === 'sand') color = '#daa520'; // goldenrod (sand)
-                else if (obs.blockType === 'metal') color = '#696969'; // dim gray (metal)
-                else if (obs.blockType === 'window') color = '#87ceeb'; // sky blue (glass)
-                else if (obs.blockType === 'door') {
-                    // Open doors are lighter/translucent
-                    color = obs.isOpen ? '#a0826d' : '#654321'; // lighter brown when open
-                }
-                else if (obs.blockType === 'roof') color = '#8b0000'; // dark red
-
-                ctx.fillStyle = color;
-
-                // Debris/rubble is solid but lighter colored
-                if (obs.blockType === 'debris') {
-                    // Just draw as a simple lighter block (no fancy effects)
-                    ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
-                } else {
-                    // Open doors are semi-transparent
-                    if (obs.blockType === 'door' && obs.isOpen) {
-                        ctx.globalAlpha = 0.3;
-                    }
-
-                    ctx.shadowBlur = 15;
-                    ctx.shadowColor = color;
-                    ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
-                    ctx.shadowBlur = 0;
-
-                    // Reset alpha
-                    ctx.globalAlpha = 1.0;
-                }
-
-                // Inner outline for depth
-                ctx.strokeStyle = obs.blockType === 'window' ? '#ffffff' : '#000000';
-                ctx.lineWidth = 1;
-                ctx.strokeRect(obs.x + 1, obs.y + 1, obs.width - 2, obs.height - 2);
-
-                // Damage overlay - cracks on damaged blocks
-                if (obs.health !== undefined && obs.maxHealth !== undefined && obs.health < obs.maxHealth) {
-                    const damagePercent = obs.health / obs.maxHealth;
-
-                    // Draw cracks based on damage
-                    ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)';
-                    ctx.lineWidth = 1;
-
-                    if (damagePercent < 0.75) {
-                        // Light damage - few cracks
-                        ctx.beginPath();
-                        ctx.moveTo(obs.x + obs.width * 0.3, obs.y);
-                        ctx.lineTo(obs.x + obs.width * 0.3, obs.y + obs.height);
-                        ctx.stroke();
-                    }
-                    if (damagePercent < 0.5) {
-                        // Medium damage - more cracks
-                        ctx.beginPath();
-                        ctx.moveTo(obs.x, obs.y + obs.height * 0.5);
-                        ctx.lineTo(obs.x + obs.width, obs.y + obs.height * 0.5);
-                        ctx.stroke();
-                    }
-                    if (damagePercent < 0.25) {
-                        // Heavy damage - lots of cracks
-                        ctx.beginPath();
-                        ctx.moveTo(obs.x + obs.width * 0.7, obs.y);
-                        ctx.lineTo(obs.x + obs.width * 0.7, obs.y + obs.height);
-                        ctx.stroke();
-
-                        ctx.beginPath();
-                        ctx.moveTo(obs.x, obs.y + obs.height * 0.25);
-                        ctx.lineTo(obs.x + obs.width, obs.y + obs.height * 0.75);
-                        ctx.stroke();
-                    }
-
-                    // Health bar above block
-                    const barWidth = obs.width;
-                    const barHeight = 3;
-                    const barX = obs.x;
-                    const barY = obs.y - 6;
-
-                    // Background
-                    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-                    ctx.fillRect(barX, barY, barWidth, barHeight);
-
-                    // Health fill - color changes based on health
-                    let healthColor = '#00ff00'; // green
-                    if (damagePercent < 0.5) healthColor = '#ffff00'; // yellow
-                    if (damagePercent < 0.25) healthColor = '#ff0000'; // red
-
-                    ctx.fillStyle = healthColor;
-                    ctx.fillRect(barX, barY, barWidth * damagePercent, barHeight);
-                }
-
-                // Draw "E" prompt for nearby doors
-                if (obs.blockType === 'door' && myPlayer) {
-                    const dist = Math.hypot(obs.x + obs.width/2 - myPlayer.x, obs.y + obs.height/2 - myPlayer.y);
-                    if (dist < 50) {
-                        ctx.fillStyle = '#00ff00';
-                        ctx.font = 'bold 12px Arial';
-                        ctx.textAlign = 'center';
-                        ctx.fillText(obs.isOpen ? '[E] Close' : '[E] Open', obs.x + obs.width/2, obs.y - 5);
-                        ctx.textAlign = 'left';
-                    }
-                }
-            });
-
-            // Draw building computer terminals (for hacking/management)
-            buildings.forEach(building => {
-                const terminal = building.terminal;
-                if (!terminal) return;
-
-                // Draw PC icon for all buildings (neutral or owned)
-                const pcSize = 25;
-
-                // PC monitor (screen)
-                ctx.fillStyle = building.ownerId === playerId ? '#00ffcc' :
-                               (building.ownerId ? '#ff4444' : '#666666');
-                ctx.fillRect(terminal.x - pcSize/2, terminal.y - pcSize/2, pcSize, pcSize * 0.7);
-
-                // Monitor border
-                ctx.strokeStyle = '#ffffff';
-                ctx.lineWidth = 2;
-                ctx.strokeRect(terminal.x - pcSize/2, terminal.y - pcSize/2, pcSize, pcSize * 0.7);
-
-                // PC base/stand
-                ctx.fillStyle = '#888888';
-                ctx.fillRect(terminal.x - pcSize/4, terminal.y + pcSize * 0.25, pcSize/2, pcSize * 0.15);
-
-                // PC icon text
-                ctx.fillStyle = '#000000';
-                ctx.font = 'bold 16px Arial';
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.fillText('💻', terminal.x, terminal.y - 3);
-                ctx.textBaseline = 'alphabetic';
-                ctx.textAlign = 'left';
-
-                // Show interaction hint if player is near terminal
-                if (myPlayer) {
-                    const dist = Math.hypot(myPlayer.x - terminal.x, myPlayer.y - terminal.y);
-                    if (dist < terminal.radius) {
-                        ctx.fillStyle = '#ffffff';
-                        ctx.font = 'bold 12px Arial';
-                        ctx.textAlign = 'center';
-
-                        if (building.ownerId === playerId) {
-                            // Owned - show management option
-                            ctx.fillText('Press E to manage building', terminal.x, terminal.y + 30);
-                        } else {
-                            // Not owned - show hack option
-                            ctx.fillText('Press E to hack terminal', terminal.x, terminal.y + 30);
-                        }
-                        ctx.textAlign = 'left';
-                    }
-                }
-
-            });
-
-            // Draw pickups
-            pickups.forEach(pickup => {
-                const glowSize = 30 + Math.sin(Date.now() / 200) * 5;
-
-                if (pickup.type === 'health') {
-                    ctx.fillStyle = '#00ff00';
-                    ctx.shadowBlur = 20;
-                    ctx.shadowColor = '#00ff00';
-                    ctx.beginPath();
-                    ctx.arc(pickup.x, pickup.y, 15, 0, Math.PI * 2);
-                    ctx.fill();
-                    ctx.shadowBlur = 0;
-
-                    // Draw cross
-                    ctx.strokeStyle = 'white';
-                    ctx.lineWidth = 3;
-                    ctx.beginPath();
-                    ctx.moveTo(pickup.x - 7, pickup.y);
-                    ctx.lineTo(pickup.x + 7, pickup.y);
-                    ctx.moveTo(pickup.x, pickup.y - 7);
-                    ctx.lineTo(pickup.x, pickup.y + 7);
-                    ctx.stroke();
-                } else if (pickup.type === 'armor') {
-                    ctx.fillStyle = '#00aaff';
-                    ctx.shadowBlur = 20;
-                    ctx.shadowColor = '#00aaff';
-                    ctx.beginPath();
-                    ctx.arc(pickup.x, pickup.y, 15, 0, Math.PI * 2);
-                    ctx.fill();
-                    ctx.shadowBlur = 0;
-
-                    // Draw shield
-                    ctx.strokeStyle = 'white';
-                    ctx.lineWidth = 3;
-                    ctx.beginPath();
-                    ctx.moveTo(pickup.x, pickup.y - 10);
-                    ctx.lineTo(pickup.x - 8, pickup.y - 5);
-                    ctx.lineTo(pickup.x - 8, pickup.y + 5);
-                    ctx.lineTo(pickup.x, pickup.y + 10);
-                    ctx.lineTo(pickup.x + 8, pickup.y + 5);
-                    ctx.lineTo(pickup.x + 8, pickup.y - 5);
-                    ctx.closePath();
-                    ctx.stroke();
-                } else if (pickup.type.startsWith('weapon_')) {
-                    const weaponType = pickup.type.replace('weapon_', '');
-                    const weaponData = WEAPONS[weaponType];
-                    ctx.fillStyle = weaponData.color;
-                    ctx.shadowBlur = 20;
-                    ctx.shadowColor = weaponData.color;
-                    ctx.beginPath();
-                    ctx.arc(pickup.x, pickup.y, 15, 0, Math.PI * 2);
-                    ctx.fill();
-                    ctx.shadowBlur = 0;
-
-                    // Draw gun icon
-                    ctx.strokeStyle = 'white';
-                    ctx.lineWidth = 3;
-                    ctx.lineCap = 'round';
-                    ctx.beginPath();
-                    ctx.moveTo(pickup.x - 8, pickup.y);
-                    ctx.lineTo(pickup.x + 8, pickup.y);
-                    ctx.stroke();
-                } else if (pickup.type.startsWith('ability_')) {
-                    // Draw ability pickup as spinning icon
-                    const abilityType = pickup.type.replace('ability_', '');
-                    ctx.fillStyle = '#00ffff';
-                    ctx.shadowBlur = 25;
-                    ctx.shadowColor = '#00ffff';
-
-                    ctx.save();
-                    ctx.translate(pickup.x, pickup.y);
-                    ctx.rotate(Date.now() / 500);
-
-                    if (abilityType === 'bladeswirl') {
-                        // Draw 4 small blades
-                        for (let i = 0; i < 4; i++) {
-                            const angle = (Math.PI * 2 / 4) * i;
-                            const x = Math.cos(angle) * 12;
-                            const y = Math.sin(angle) * 12;
-                            ctx.beginPath();
-                            ctx.moveTo(x - 8, y - 3);
-                            ctx.lineTo(x + 8, y);
-                            ctx.lineTo(x - 8, y + 3);
-                            ctx.closePath();
-                            ctx.fill();
-                        }
-                    }
-                    ctx.shadowBlur = 0;
-                    ctx.restore();
-                }
-            });
-
-            // Draw particles
-            particles.forEach(particle => {
-                ctx.globalAlpha = particle.life;
-                ctx.fillStyle = particle.color;
-                ctx.shadowBlur = 10;
-                ctx.shadowColor = particle.color;
-
-                if (particle.isVoxel) {
-                    // Draw as square voxel chunk
-                    ctx.fillRect(particle.x - particle.size / 2, particle.y - particle.size / 2, particle.size, particle.size);
-                } else {
-                    // Draw as circle
-                    ctx.beginPath();
-                    ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
-                    ctx.fill();
-                }
-
-                ctx.shadowBlur = 0;
-                ctx.globalAlpha = 1.0;
-            });
-
-            // Draw bullets
-            bullets.forEach(bullet => {
-                ctx.fillStyle = bullet.color || '#ffeb3b';
-                ctx.shadowBlur = 15;
-                ctx.shadowColor = bullet.color || '#ffeb3b';
-                ctx.beginPath();
-                ctx.arc(bullet.x, bullet.y, bullet.size || 5, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.shadowBlur = 0;
-            });
-
-            // Draw players
-            Object.values(players).forEach(player => {
-                const isMe = player.id === playerId;
-
-                // Don't draw dead players
-                if (player.health <= 0) return;
-
-                // Check if invulnerable and should flash
-                const isInvulnerable = player.invulnerable && Date.now() < player.invulnerableUntil;
-                const flashOn = isInvulnerable ? Math.floor(Date.now() / 100) % 2 === 0 : true;
-
-                if (!flashOn) return; // Skip drawing if flashing off
-
-                // Shield circle (if armor > 0)
-                if (player.armor > 0) {
-                    const shieldRadius = PLAYER_SIZE + 8;
-                    const shieldPercent = player.armor / (player.maxArmor || 100);
-
-                    ctx.strokeStyle = '#00aaff';
-                    ctx.lineWidth = 3;
-                    ctx.shadowBlur = 15;
-                    ctx.shadowColor = '#00aaff';
-                    ctx.globalAlpha = 0.6 + (shieldPercent * 0.4);
-                    ctx.beginPath();
-                    ctx.arc(player.x, player.y, shieldRadius, 0, Math.PI * 2 * shieldPercent);
-                    ctx.stroke();
-                    ctx.globalAlpha = 1.0;
-                    ctx.shadowBlur = 0;
-                }
-
-                // Draw top-down person
-                const color = isInvulnerable ? '#ffffff' : (player.color || '#4ecdc4');
-                ctx.shadowBlur = isMe ? 20 : 10;
-                ctx.shadowColor = isInvulnerable ? '#ffffff' : (player.color || '#4ecdc4');
-
-                // Body (torso)
-                ctx.fillStyle = color;
-                ctx.beginPath();
-                ctx.ellipse(player.x, player.y + 2, 12, 16, 0, 0, Math.PI * 2);
-                ctx.fill();
-
-                // Head
-                ctx.beginPath();
-                ctx.arc(player.x, player.y - 12, 8, 0, Math.PI * 2);
-                ctx.fill();
-
-                // Arms (pointing in aim direction)
-                ctx.strokeStyle = color;
-                ctx.lineWidth = 5;
-                ctx.lineCap = 'round';
-
-                // Left arm
-                ctx.beginPath();
-                ctx.moveTo(player.x - 8, player.y);
-                ctx.lineTo(player.x + Math.cos(player.angle - 0.3) * 18, player.y + Math.sin(player.angle - 0.3) * 18);
-                ctx.stroke();
-
-                // Right arm
-                ctx.beginPath();
-                ctx.moveTo(player.x + 8, player.y);
-                ctx.lineTo(player.x + Math.cos(player.angle + 0.3) * 18, player.y + Math.sin(player.angle + 0.3) * 18);
-                ctx.stroke();
-
-                // Draw tool/weapon based on current tool
-                if (isMe && currentTool === 'hammer') {
-                    // Pickaxe animation
-                    const swingProgress = toolSwingTime > 0 ? (Date.now() - toolSwingTime) / toolSwingDuration : 0;
-                    const swingAngle = swingProgress < 1 ? Math.sin(swingProgress * Math.PI) * 0.8 : 0;
-
-                    const pickAngle = player.angle + swingAngle;
-                    const handleLen = 25;
-                    const pickLen = 15;
-
-                    // Handle
-                    ctx.strokeStyle = '#8B4513';
-                    ctx.lineWidth = 4;
-                    ctx.beginPath();
-                    ctx.moveTo(player.x + Math.cos(player.angle) * 8, player.y + Math.sin(player.angle) * 8);
-                    ctx.lineTo(player.x + Math.cos(pickAngle) * handleLen, player.y + Math.sin(pickAngle) * handleLen);
-                    ctx.stroke();
-
-                    // Pickaxe head
-                    ctx.strokeStyle = '#666666';
-                    ctx.lineWidth = 6;
-                    ctx.lineCap = 'round';
-                    const headX = player.x + Math.cos(pickAngle) * handleLen;
-                    const headY = player.y + Math.sin(pickAngle) * handleLen;
-                    ctx.beginPath();
-                    ctx.moveTo(headX + Math.cos(pickAngle + Math.PI/2) * pickLen, headY + Math.sin(pickAngle + Math.PI/2) * pickLen);
-                    ctx.lineTo(headX + Math.cos(pickAngle - Math.PI/2) * pickLen, headY + Math.sin(pickAngle - Math.PI/2) * pickLen);
-                    ctx.stroke();
-                } else if (isMe && currentTool === 'repair') {
-                    // Wrench animation
-                    const swingProgress = toolSwingTime > 0 ? (Date.now() - toolSwingTime) / toolSwingDuration : 0;
-                    const swingAngle = swingProgress < 1 ? Math.sin(swingProgress * Math.PI) * 0.5 : 0;
-
-                    const wrenchAngle = player.angle + swingAngle;
-                    const wrenchLen = 22;
-
-                    // Wrench handle
-                    ctx.strokeStyle = '#888888';
-                    ctx.lineWidth = 5;
-                    ctx.beginPath();
-                    ctx.moveTo(player.x + Math.cos(player.angle) * 8, player.y + Math.sin(player.angle) * 8);
-                    ctx.lineTo(player.x + Math.cos(wrenchAngle) * wrenchLen, player.y + Math.sin(wrenchAngle) * wrenchLen);
-                    ctx.stroke();
-
-                    // Wrench head
-                    ctx.fillStyle = '#666666';
-                    const headX = player.x + Math.cos(wrenchAngle) * wrenchLen;
-                    const headY = player.y + Math.sin(wrenchAngle) * wrenchLen;
-                    ctx.beginPath();
-                    ctx.arc(headX, headY, 5, 0, Math.PI * 2);
-                    ctx.fill();
-                } else {
-                    // Gun (in hands)
-                    ctx.strokeStyle = '#333333';
-                    ctx.lineWidth = 6;
-                    ctx.beginPath();
-                    ctx.moveTo(player.x + Math.cos(player.angle) * 10, player.y + Math.sin(player.angle) * 10);
-                    ctx.lineTo(player.x + Math.cos(player.angle) * 28, player.y + Math.sin(player.angle) * 28);
-                    ctx.stroke();
-                }
-
-                // Legs
-                ctx.strokeStyle = color;
-                ctx.lineWidth = 5;
-
-                // Left leg
-                ctx.beginPath();
-                ctx.moveTo(player.x - 4, player.y + 12);
-                ctx.lineTo(player.x - 6, player.y + 22);
-                ctx.stroke();
-
-                // Right leg
-                ctx.beginPath();
-                ctx.moveTo(player.x + 4, player.y + 12);
-                ctx.lineTo(player.x + 6, player.y + 22);
-                ctx.stroke();
-
-                ctx.shadowBlur = 0;
-
-                // Name
-                ctx.fillStyle = isMe ? '#00ff88' : 'white';
-                ctx.font = isMe ? 'bold 14px Arial' : '12px Arial';
-                ctx.textAlign = 'center';
-                ctx.fillText(player.name || 'Player', player.x, player.y - 30);
-
-                // Health bar
-                if (player.health !== undefined) {
-                    const barWidth = 40;
-                    const barHeight = 5;
-                    ctx.fillStyle = '#ff0000';
-                    ctx.fillRect(player.x - barWidth/2, player.y + 28, barWidth, barHeight);
-                    ctx.fillStyle = '#00ff00';
-                    ctx.fillRect(player.x - barWidth/2, player.y + 28, (player.health / player.maxHealth) * barWidth, barHeight);
-                }
-            });
-
-            // Update and draw blade swirl
+            // Update blade swirl ability (collision detection)
             if (abilityActive && currentAbility === 'bladeswirl' && myPlayer) {
                 bladeAngle += 0.1; // Spin speed
 
@@ -2645,26 +2170,6 @@
                     const currentAngle = bladeAngle + blade.angle;
                     const bladeX = myPlayer.x + Math.cos(currentAngle) * blade.radius;
                     const bladeY = myPlayer.y + Math.sin(currentAngle) * blade.radius;
-
-                    // Draw blade
-                    ctx.save();
-                    ctx.translate(bladeX, bladeY);
-                    ctx.rotate(currentAngle);
-
-                    // Blade shape (glowing cyan blade)
-                    ctx.fillStyle = '#00ffff';
-                    ctx.shadowBlur = 15;
-                    ctx.shadowColor = '#00ffff';
-
-                    ctx.beginPath();
-                    ctx.moveTo(-15, -5);
-                    ctx.lineTo(15, 0);
-                    ctx.lineTo(-15, 5);
-                    ctx.closePath();
-                    ctx.fill();
-
-                    ctx.shadowBlur = 0;
-                    ctx.restore();
 
                     // Check blade collisions with obstacles
                     if (!blade.totalHits) blade.totalHits = 0;
@@ -2708,7 +2213,7 @@
                             const dy = bladeY - otherPlayer.y;
                             const dist = Math.sqrt(dx * dx + dy * dy);
 
-                            if (dist < PLAYER_SIZE + 10) {
+                            if (dist < Constants.PLAYER_SIZE + 10) {
                                 // Hit! Send damage (with 500ms cooldown per player)
                                 const now = Date.now();
                                 if (!blade.lastHit) blade.lastHit = {};
@@ -2728,103 +2233,32 @@
                 });
             }
 
-            // Restore context
-            ctx.restore();
-
-            // Draw minimap
-            if (myPlayer) {
-                const minimapSize = minimapMinimized ? 80 : 200;
-                const minimapX = canvas.width - minimapSize - 10;
-                const minimapY = minimapMinimized ? 10 : 20;
-
-                // Minimap background
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-                ctx.fillRect(minimapX, minimapY, minimapSize, minimapSize);
-
-                // Minimap border
-                ctx.strokeStyle = '#00ff88';
-                ctx.lineWidth = 2;
-                ctx.strokeRect(minimapX, minimapY, minimapSize, minimapSize);
-
-                const scaleX = minimapSize / MAP_WIDTH;
-                const scaleY = minimapSize / MAP_HEIGHT;
-
-                // Draw obstacles on minimap
-                ctx.fillStyle = '#00ffff';
-                obstacles.forEach(obs => {
-                    ctx.fillRect(
-                        minimapX + obs.x * scaleX,
-                        minimapY + obs.y * scaleY,
-                        obs.width * scaleX,
-                        obs.height * scaleY
-                    );
-                });
-
-                // Draw pickups on minimap
-                ctx.fillStyle = '#ffff00';
-                pickups.forEach(pickup => {
-                    ctx.beginPath();
-                    ctx.arc(
-                        minimapX + pickup.x * scaleX,
-                        minimapY + pickup.y * scaleY,
-                        3, 0, Math.PI * 2
-                    );
-                    ctx.fill();
-                });
-
-                // Draw players on minimap
-                Object.values(players).forEach(player => {
-                    ctx.fillStyle = player.id === playerId ? '#00ff88' : '#ff6b6b';
-                    ctx.beginPath();
-                    ctx.arc(
-                        minimapX + player.x * scaleX,
-                        minimapY + player.y * scaleY,
-                        4, 0, Math.PI * 2
-                    );
-                    ctx.fill();
-                });
-
-                // Minimap label
-                ctx.fillStyle = '#00ff88';
-                if (minimapMinimized) {
-                    ctx.font = 'bold 9px Arial';
-                    ctx.fillText('MAP', minimapX + 3, minimapY + 10);
-                    // Show expand indicator
-                    ctx.fillText('++', minimapX + minimapSize - 15, minimapY + 10);
-                } else {
-                    ctx.font = 'bold 12px Arial';
-                    ctx.fillText('MAP', minimapX + 5, minimapY + 15);
-                    // Show minimize indicator on mobile
-                    if (isMobile) {
-                        ctx.fillText('--', minimapX + minimapSize - 18, minimapY + 15);
-                    }
-                }
-            }
-
-            // Debug info - top left
-            ctx.font = '14px Arial';
-
-            // FPS
-            ctx.fillStyle = fps < 30 ? '#ff0000' : (fps < 50 ? '#ffff00' : '#00ff00');
-            ctx.fillText(`FPS: ${fps}`, 10, 25);
-
-            // Ping
-            ctx.fillStyle = ping > 200 ? '#ff0000' : (ping > 100 ? '#ffff00' : '#00ff00');
-            ctx.fillText(`Ping: ${ping}ms`, 10, 45);
-
-            // Position
-            ctx.fillStyle = 'white';
-            if (myPlayer) {
-                ctx.fillText(`Pos: (${Math.round(myPlayer.x)}, ${Math.round(myPlayer.y)})`, 10, canvas.height - 40);
-            }
-
-            // Weapon
-            ctx.fillStyle = '#ffff00';
-            ctx.fillText(`Weapon: ${WEAPONS[currentWeapon].name}`, 10, canvas.height - 20);
-
-            // Objects
-            ctx.fillStyle = '#888888';
-            ctx.fillText(`${obstacles.length} walls | ${pickups.length} items`, 10, canvas.height - 0);
+            // === RENDERING PHASE ===
+            // All rendering is now handled by the Renderer class (Phase 2 refactoring)
+            renderer.render({
+                terrain,
+                floors,
+                obstacles,
+                buildings,
+                pickups,
+                particles,
+                bullets,
+                players,
+                myPlayer,
+                playerId,
+                currentTool,
+                currentWeapon,
+                toolSwingTime,
+                toolSwingDuration: 300,
+                blades,
+                bladeAngle,
+                abilityActive,
+                currentAbility,
+                fps,
+                ping,
+                minimapMinimized,
+                isMobile
+            });
 
             // Update UI
             updateUI();
