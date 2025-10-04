@@ -28,6 +28,44 @@ export class TerrainRenderer {
             metal: '#3a3a3a',
             default: '#3a3a3a'
         };
+
+        // Tree cover health tracking
+        this.treeCover = new Map(); // key: "x,y", value: { health: 100, regrowTimer: 0 }
+    }
+
+    /**
+     * Damage tree cover at specific position
+     */
+    damageTreeCover(x, y, damage) {
+        const tileSize = 50;
+        const tileX = Math.floor(x / tileSize) * tileSize;
+        const tileY = Math.floor(y / tileSize) * tileSize;
+        const key = `${tileX},${tileY}`;
+
+        if (!this.treeCover.has(key)) {
+            this.treeCover.set(key, { health: 100, regrowTimer: 0 });
+        }
+
+        const tree = this.treeCover.get(key);
+        tree.health = Math.max(0, tree.health - damage);
+
+        // Start regrow timer when destroyed
+        if (tree.health === 0) {
+            tree.regrowTimer = Date.now() + 45000; // 45 seconds
+        }
+    }
+
+    /**
+     * Update tree regrowth
+     */
+    updateTreeRegrowth() {
+        const now = Date.now();
+        for (const [key, tree] of this.treeCover.entries()) {
+            if (tree.health === 0 && tree.regrowTimer > 0 && now >= tree.regrowTimer) {
+                tree.health = 100;
+                tree.regrowTimer = 0;
+            }
+        }
     }
 
     /**
@@ -52,27 +90,40 @@ export class TerrainRenderer {
                 }
             }
 
-            // Add tree obstacles in forest tiles
+            // Add tree obstacles in forest tiles (only if not destroyed)
             if (tile.type === 'forest') {
-                this.ctx.fillStyle = '#0d3d0d'; // Darker green for tree trunks
-                // Draw 3-4 tree circles per forest tile for visual density
-                const treePositions = [
-                    { x: 10, y: 10, r: 8 },
-                    { x: 35, y: 15, r: 6 },
-                    { x: 15, y: 35, r: 7 },
-                    { x: 38, y: 38, r: 5 }
-                ];
+                const key = `${tile.x},${tile.y}`;
+                const treeCover = this.treeCover.get(key);
+                const treeHealth = treeCover ? treeCover.health : 100;
 
-                treePositions.forEach(tree => {
-                    this.ctx.beginPath();
-                    this.ctx.arc(tile.x + tree.x, tile.y + tree.y, tree.r, 0, Math.PI * 2);
-                    this.ctx.fill();
+                if (treeHealth > 0) {
+                    // Calculate opacity based on health
+                    const opacity = treeHealth / 100;
 
-                    // Add lighter green foliage outline
-                    this.ctx.strokeStyle = '#2d7d2d';
-                    this.ctx.lineWidth = 2;
-                    this.ctx.stroke();
-                });
+                    this.ctx.fillStyle = '#0d3d0d'; // Darker green for tree trunks
+                    this.ctx.globalAlpha = opacity;
+
+                    // Draw 3-4 tree circles per forest tile for visual density
+                    const treePositions = [
+                        { x: 10, y: 10, r: 8 },
+                        { x: 35, y: 15, r: 6 },
+                        { x: 15, y: 35, r: 7 },
+                        { x: 38, y: 38, r: 5 }
+                    ];
+
+                    treePositions.forEach(tree => {
+                        this.ctx.beginPath();
+                        this.ctx.arc(tile.x + tree.x, tile.y + tree.y, tree.r, 0, Math.PI * 2);
+                        this.ctx.fill();
+
+                        // Add lighter green foliage outline
+                        this.ctx.strokeStyle = '#2d7d2d';
+                        this.ctx.lineWidth = 2;
+                        this.ctx.stroke();
+                    });
+
+                    this.ctx.globalAlpha = 1.0; // Reset opacity
+                }
             }
         });
     }

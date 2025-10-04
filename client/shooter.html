@@ -1100,6 +1100,9 @@
                 // Set terrain reference in physics system for bullet slowdown
                 physicsSystem.setTerrain(terrain);
 
+                // Set terrain renderer reference for tree damage
+                physicsSystem.setTerrainRenderer(renderer.terrainRenderer);
+
                 loadingSteps.terrain = true;
                 loadingStatus.textContent = 'Terrain generated';
                 updateLoadingProgress();
@@ -1490,6 +1493,9 @@
 
             // Update bullets (uses PhysicsSystem)
             bullets = physicsSystem.updateBullets(bullets, obstacles, players);
+
+            // Update tree regrowth
+            renderer.terrainRenderer.updateTreeRegrowth();
 
             // Update blade swirl ability (uses AbilitySystem)
             abilitySystem.update(obstacles, players);

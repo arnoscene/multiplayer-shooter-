@@ -20,6 +20,9 @@ export class PhysicsSystem {
         // Player reference
         this.myPlayer = null;
         this.playerId = null;
+
+        // Renderer reference for tree damage
+        this.terrainRenderer = null;
     }
 
     /**
@@ -38,6 +41,13 @@ export class PhysicsSystem {
     }
 
     /**
+     * Set terrain renderer for tree damage
+     */
+    setTerrainRenderer(renderer) {
+        this.terrainRenderer = renderer;
+    }
+
+    /**
      * Update bullets - movement and collision detection
      * @param {Array} bullets - Array of bullet objects
      * @param {Array} obstacles - Array of obstacle objects
@@ -46,7 +56,21 @@ export class PhysicsSystem {
      */
     updateBullets(bullets, obstacles, players) {
         return bullets.filter(bullet => {
-            // Check terrain for forest slowdown
+            // Move bullet
+            bullet.x += bullet.vx;
+            bullet.y += bullet.vy;
+
+            // Check if bullet traveled too far or too slow (cleanup stuck bullets)
+            if (!bullet.distanceTraveled) bullet.distanceTraveled = 0;
+            const speed = Math.sqrt(bullet.vx * bullet.vx + bullet.vy * bullet.vy);
+            bullet.distanceTraveled += speed;
+
+            // Remove bullets that are stuck (speed too low) or traveled too far
+            if (speed < 0.5 || bullet.distanceTraveled > 3000) {
+                return false;
+            }
+
+            // Check terrain for forest slowdown and tree damage
             if (this.terrain) {
                 const tileSize = 50;
                 const tileX = Math.floor(bullet.x / tileSize) * tileSize;
@@ -54,15 +78,16 @@ export class PhysicsSystem {
                 const tile = this.terrain.find(t => t.x === tileX && t.y === tileY);
 
                 if (tile && tile.type === 'forest') {
-                    // Slow down bullet by 40% when passing through forest
-                    bullet.vx *= 0.6;
-                    bullet.vy *= 0.6;
+                    // Damage tree cover (5 damage per bullet hit)
+                    if (this.terrainRenderer) {
+                        this.terrainRenderer.damageTreeCover(bullet.x, bullet.y, 5);
+                    }
+
+                    // Reduce bullet speed by 15% per frame when in forest
+                    bullet.vx *= 0.85;
+                    bullet.vy *= 0.85;
                 }
             }
-
-            // Move bullet
-            bullet.x += bullet.vx;
-            bullet.y += bullet.vy;
 
             // Check obstacle collision
             for (const obs of obstacles) {
