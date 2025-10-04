@@ -31,6 +31,13 @@ export class PhysicsSystem {
     }
 
     /**
+     * Set terrain reference for forest bullet slowdown
+     */
+    setTerrain(terrain) {
+        this.terrain = terrain;
+    }
+
+    /**
      * Update bullets - movement and collision detection
      * @param {Array} bullets - Array of bullet objects
      * @param {Array} obstacles - Array of obstacle objects
@@ -39,6 +46,20 @@ export class PhysicsSystem {
      */
     updateBullets(bullets, obstacles, players) {
         return bullets.filter(bullet => {
+            // Check terrain for forest slowdown
+            if (this.terrain) {
+                const tileSize = 50;
+                const tileX = Math.floor(bullet.x / tileSize) * tileSize;
+                const tileY = Math.floor(bullet.y / tileSize) * tileSize;
+                const tile = this.terrain.find(t => t.x === tileX && t.y === tileY);
+
+                if (tile && tile.type === 'forest') {
+                    // Slow down bullet by 40% when passing through forest
+                    bullet.vx *= 0.6;
+                    bullet.vy *= 0.6;
+                }
+            }
+
             // Move bullet
             bullet.x += bullet.vx;
             bullet.y += bullet.vy;

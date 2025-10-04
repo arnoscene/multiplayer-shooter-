@@ -1097,6 +1097,9 @@
                     console.log(`Applied ${data.roads.length} road tiles from server`);
                 }
 
+                // Set terrain reference in physics system for bullet slowdown
+                physicsSystem.setTerrain(terrain);
+
                 loadingSteps.terrain = true;
                 loadingStatus.textContent = 'Terrain generated';
                 updateLoadingProgress();
