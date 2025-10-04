@@ -501,6 +501,9 @@
         // Import rendering modules (Phase 2 refactoring)
         import { Renderer } from './js/rendering/Renderer.js';
 
+        // Import network module (Phase 3 refactoring)
+        import { NetworkManager } from './js/core/NetworkManager.js';
+
         const canvas = document.getElementById('game');
         const ctx = canvas.getContext('2d');
 
@@ -527,7 +530,7 @@
         let cameraY = 0;
 
         // Game state
-        let ws = null;
+        const network = new NetworkManager();
         let playerId = null;
         let players = {};
         let bullets = [];
@@ -580,8 +583,7 @@
                     const damageFalloff = 1 - (dist / radius);
                     const damage = Math.floor(wallDamage * damageFalloff);
 
-                    send({
-                        type: 'obstacleHit',
+                    network.send('obstacleHit', {
                         obstacleId: obs.id,
                         damage: damage
                     });
@@ -598,8 +600,7 @@
                     const damageFalloff = 1 - (dist / radius);
                     const damage = Math.floor(playerDamage * damageFalloff);
 
-                    send({
-                        type: 'bulletHit',
+                    network.send('bulletHit', {
                         bulletId: 'explosion_' + Date.now() + '_' + Math.random(),
                         targetId: player.id,
                         damage: damage
@@ -828,14 +829,14 @@
         }
 
         function connectToServer(url) {
-            ws = new WebSocket(url);
+            network.connect(url);
 
-            ws.onopen = () => {
-                console.log('✅ Connected to server!');
+            // Setup connection handler
+            network.onOpen(() => {
+                console.log('Connection opened');
 
                 // Send persistent player ID immediately
-                send({
-                    type: 'register',
+                network.send('register', {
                     persistentId: persistentPlayerId,
                     name: playerName,
                     color: playerColor
@@ -843,334 +844,326 @@
 
                 // Start ping measurement
                 pingUpdateInterval = setInterval(() => {
-                    if (ws && ws.readyState === WebSocket.OPEN) {
+                    if (network.isConnected()) {
                         pingStart = Date.now();
-                        send({ type: 'ping' });
+                        network.send('ping');
                     }
                 }, 1000); // Measure ping every second
-            };
+            });
 
-            ws.onmessage = (event) => {
-                const data = JSON.parse(event.data);
+            // Register message handlers
+            network.on('init', (data) => {
+                playerId = data.playerId;
+                console.log('🎮 Player initialized:', playerId);
 
-                switch(data.type) {
-                    case 'init':
-                        playerId = data.playerId;
-                        console.log('🎮 Player initialized:', playerId);
+                // Use server position
+                const serverPlayer = data.players.find(p => p.id === data.playerId);
+                console.log('📍 Spawn position:', serverPlayer ? `(${Math.round(serverPlayer.x)}, ${Math.round(serverPlayer.y)})` : 'default');
 
-                        // Use server position
-                        const serverPlayer = data.players.find(p => p.id === data.playerId);
-                        console.log('📍 Spawn position:', serverPlayer ? `(${Math.round(serverPlayer.x)}, ${Math.round(serverPlayer.y)})` : 'default');
+                myPlayer = {
+                    id: data.playerId,
+                    name: playerName,
+                    x: serverPlayer ? serverPlayer.x : canvas.width / 2,
+                    y: serverPlayer ? serverPlayer.y : canvas.height / 2,
+                    angle: 0,
+                    health: 100,
+                    maxHealth: 100,
+                    armor: 0,
+                    maxArmor: 100,
+                    color: playerColor,
+                    weapon: 'pistol',
+                    scrap: 0,
+                    stamina: 100,
+                    maxStamina: 100,
+                    invulnerable: true,
+                    invulnerableUntil: Date.now() + 1500
+                };
+                players[playerId] = myPlayer;
 
-                        myPlayer = {
-                            id: data.playerId,
-                            name: playerName,
-                            x: serverPlayer ? serverPlayer.x : canvas.width / 2,
-                            y: serverPlayer ? serverPlayer.y : canvas.height / 2,
-                            angle: 0,
-                            health: 100,
-                            maxHealth: 100,
-                            armor: 0,
-                            maxArmor: 100,
-                            color: playerColor,
-                            weapon: 'pistol',
-                            scrap: 0,
-                            stamina: 100,
-                            maxStamina: 100,
-                            invulnerable: true,
-                            invulnerableUntil: Date.now() + 1500
-                        };
-                        players[playerId] = myPlayer;
+                // Add other players
+                data.players.forEach(p => {
+                    if (p.id !== playerId) {
+                        players[p.id] = p;
+                    }
+                });
 
-                        // Add other players
-                        data.players.forEach(p => {
-                            if (p.id !== playerId) {
-                                players[p.id] = p;
-                            }
-                        });
+                console.log('👥 Total players:', Object.keys(players).length);
 
-                        console.log('👥 Total players:', Object.keys(players).length);
+                // Send name update
+                network.send('updateName', { name: playerName });
 
-                        // Send name update
-                        send({ type: 'updateName', name: playerName });
+                document.getElementById('playerName').textContent = playerName;
+            });
 
-                        document.getElementById('playerName').textContent = playerName;
-                        break;
+            network.on('playerJoined', (data) => {
+                players[data.player.id] = data.player;
+                updatePlayerCount();
+            });
 
-                    case 'playerJoined':
-                        players[data.player.id] = data.player;
-                        updatePlayerCount();
-                        break;
+            network.on('playerLeft', (data) => {
+                delete players[data.playerId];
+                updatePlayerCount();
+            });
 
-                    case 'playerLeft':
-                        delete players[data.playerId];
-                        updatePlayerCount();
-                        break;
+            network.on('playerMoved', (data) => {
+                if (players[data.playerId] && data.playerId !== playerId) {
+                    const player = players[data.playerId];
 
-                    case 'playerMoved':
-                        if (players[data.playerId] && data.playerId !== playerId) {
-                            const player = players[data.playerId];
+                    // Store target position for interpolation
+                    player.targetX = data.x;
+                    player.targetY = data.y;
+                    player.targetAngle = data.angle;
 
-                            // Store target position for interpolation
-                            player.targetX = data.x;
-                            player.targetY = data.y;
-                            player.targetAngle = data.angle;
-
-                            // Initialize if first update
-                            if (player.x === undefined) {
-                                player.x = data.x;
-                                player.y = data.y;
-                            }
-                        }
-                        break;
-
-                    case 'playerShot':
-                        // Don't add bullets we already created locally
-                        if (data.playerId === playerId) {
-                            break; // Skip our own bullets echoed from server
-                        }
-
-                        bullets.push({
-                            id: data.bulletId,
-                            x: data.x,
-                            y: data.y,
-                            vx: data.vx,
-                            vy: data.vy,
-                            playerId: data.playerId,
-                            damage: data.damage || 20,
-                            size: data.size || 5,
-                            color: data.color || '#ffeb3b',
-                            explosive: data.explosive || false,
-                            explosionRadius: data.explosionRadius,
-                            penetration: data.penetration
-                        });
-                        break;
-
-                    case 'playerNameChanged':
-                        if (players[data.playerId]) {
-                            players[data.playerId].name = data.name;
-                        }
-                        break;
-
-                    case 'playerDamaged':
-                        if (players[data.playerId]) {
-                            players[data.playerId].health = data.health;
-                            if (data.playerId === playerId && myPlayer) {
-                                myPlayer.health = data.health;
-                            }
-                        }
-                        break;
-
-                    case 'playerDied':
-                        console.log('Player died:', data.playerId);
-                        // Create explosion at player location
-                        if (players[data.playerId]) {
-                            const player = players[data.playerId];
-                            const particleCount = 12;
-                            for (let i = 0; i < particleCount; i++) {
-                                const angle = (Math.PI * 2 / particleCount) * i;
-                                const speed = 3 + Math.random() * 3;
-                                particles.push({
-                                    x: player.x,
-                                    y: player.y,
-                                    vx: Math.cos(angle) * speed,
-                                    vy: Math.sin(angle) * speed,
-                                    color: player.color || '#4ecdc4',
-                                    life: 1.0,
-                                    size: 8 + Math.random() * 4
-                                });
-                            }
-                        }
-                        break;
-
-                    case 'playerRespawned':
-                        if (players[data.playerId]) {
-                            players[data.playerId].x = data.x;
-                            players[data.playerId].y = data.y;
-                            players[data.playerId].health = data.health;
-                            players[data.playerId].invulnerable = true;
-                            players[data.playerId].invulnerableUntil = Date.now() + 1500;
-
-                            if (data.playerId === playerId) {
-                                myPlayer.x = data.x;
-                                myPlayer.y = data.y;
-                                myPlayer.health = data.health;
-                                myPlayer.invulnerable = true;
-                                myPlayer.invulnerableUntil = Date.now() + 1500;
-                                currentWeapon = 'pistol';
-                            }
-                        }
-                        break;
-
-                    case 'pickupsUpdate':
-                        pickups = data.pickups;
-                        console.log('📦 Received', pickups.length, 'pickups');
-                        break;
-
-                    case 'obstaclesUpdate':
-                        obstacles = data.obstacles;
-                        console.log(`Received ${obstacles.length} obstacles from server`);
-                        break;
-                    case 'doorToggled':
-                        // Handle multiple door blocks (3-block wide doors)
-                        const doorIds = data.doorIds || [data.doorId]; // Support both old and new format
-                        doorIds.forEach(doorId => {
-                            const door = obstacles.find(o => o.id === doorId);
-                            if (door) {
-                                door.isOpen = data.isOpen;
-                            }
-                        });
-                        console.log(`${doorIds.length} door block(s) toggled: ${data.isOpen ? 'open' : 'closed'}`);
-                        break;
-
-                    case 'terrainUpdate':
-                        terrain = data.terrain;
-                        console.log(`Received ${terrain.length} terrain tiles from server`);
-                        break;
-
-                    case 'floorsUpdate':
-                        floors = data.floors;
-                        console.log(`Received ${floors.length} floor tiles from server`);
-                        break;
-
-                    case 'buildingsUpdate':
-                        buildings = data.buildings;
-                        console.log(`Received ${buildings.length} buildings from server`);
-                        break;
-
-                    case 'buildingCaptured':
-                        const capturedBuilding = buildings.find(b => b.id === data.buildingId);
-                        if (capturedBuilding) {
-                            capturedBuilding.ownerId = data.ownerId;
-                            capturedBuilding.ownerName = data.ownerName;
-                            console.log(`${data.ownerName} captured ${data.buildingId}!`);
-                        }
-                        break;
-
-                    case 'buildingNeutralized':
-                        const neutralBuilding = buildings.find(b => b.id === data.buildingId);
-                        if (neutralBuilding) {
-                            neutralBuilding.ownerId = null;
-                            neutralBuilding.ownerName = null;
-                        }
-                        break;
-
-                    case 'buildingLost':
-                        const lostBuilding = buildings.find(b => b.id === data.buildingId);
-                        if (lostBuilding) {
-                            lostBuilding.ownerId = null;
-                            lostBuilding.ownerName = null;
-                        }
-                        break;
-
-                    case 'buildingCaptureProgress':
-                        const progressBuilding = buildings.find(b => b.id === data.buildingId);
-                        if (progressBuilding) {
-                            if (!progressBuilding.captureProgress) progressBuilding.captureProgress = {};
-                            progressBuilding.captureProgress[data.playerId] = data.progress;
-                            progressBuilding.ownerId = data.ownerId;
-                        }
-                        break;
-
-                    case 'obstacleDestroyed':
-                        // Convert obstacle to debris instead of removing it
-                        const destroyedObs = obstacles.find(o => o.id === data.obstacleId);
-                        if (destroyedObs && data.isDebris) {
-                            // Convert to debris (walkable rubble)
-                            destroyedObs.isDestroyed = true;
-                            destroyedObs.isWall = false;
-                            destroyedObs.health = 0;
-                            destroyedObs.originalType = destroyedObs.blockType; // Store original type
-                            destroyedObs.blockType = 'debris';
-                        } else if (destroyedObs) {
-                            // Legacy: remove if not debris
-                            obstacles = obstacles.filter(o => o.id !== data.obstacleId);
-                        }
-
-                        // Create small voxel debris particles
-                        const centerX = data.x + data.width / 2;
-                        const centerY = data.y + data.height / 2;
-
-                        for (let i = 0; i < 8; i++) {
-                            particles.push({
-                                x: centerX,
-                                y: centerY,
-                                vx: (Math.random() - 0.5) * 10,
-                                vy: (Math.random() - 0.5) * 10,
-                                size: 4 + Math.random() * 4,
-                                life: 1.0,
-                                color: '#00ffff',
-                                isVoxel: true
-                            });
-                        }
-                        break;
-
-                    case 'obstacleDamaged':
-                        // Update obstacle health
-                        const damagedObs = obstacles.find(o => o.id === data.obstacleId);
-                        if (damagedObs) {
-                            damagedObs.health = data.health;
-                        }
-                        break;
-
-                    case 'pong':
-                        if (pingStart > 0) {
-                            ping = Date.now() - pingStart;
-                            pingStart = 0;
-                        }
-                        break;
-
-                    case 'pickupCollected':
-                        // Remove pickup
-                        pickups = pickups.filter(p => p.id !== data.pickupId);
-
-                        if (data.playerId === playerId) {
-                            if (data.pickupType === 'health') {
-                                myPlayer.health = Math.min(myPlayer.maxHealth, myPlayer.health + 30);
-                            } else if (data.pickupType === 'armor') {
-                                myPlayer.armor = Math.min(myPlayer.maxArmor, myPlayer.armor + 50);
-                            } else if (data.pickupType.startsWith('weapon_')) {
-                                const weaponType = data.pickupType.replace('weapon_', '');
-                                currentWeapon = weaponType;
-                                myPlayer.weapon = weaponType;
-                                // Initialize ammo if first time picking up
-                                if (weaponAmmo[weaponType] === undefined) {
-                                    weaponAmmo[weaponType] = Constants.WEAPONS[weaponType].ammo;
-                                }
-                            }
-                        }
-                        break;
-
-                    case 'playerArmorUpdate':
-                        if (players[data.playerId]) {
-                            players[data.playerId].armor = data.armor;
-                            if (data.playerId === playerId && myPlayer) {
-                                myPlayer.armor = data.armor;
-                            }
-                        }
-                        break;
-
-                    case 'playerScrapUpdate':
-                        if (players[data.playerId]) {
-                            players[data.playerId].scrap = data.scrap;
-                            if (data.playerId === playerId && myPlayer) {
-                                myPlayer.scrap = data.scrap;
-                            }
-                        }
-                        break;
+                    // Initialize if first update
+                    if (player.x === undefined) {
+                        player.x = data.x;
+                        player.y = data.y;
+                    }
                 }
-            };
+            });
 
-            ws.onclose = () => {
-                console.log('Disconnected');
-            };
+            network.on('playerShot', (data) => {
+                // Don't add bullets we already created locally
+                if (data.playerId === playerId) {
+                    return; // Skip our own bullets echoed from server
+                }
+
+                bullets.push({
+                    id: data.bulletId,
+                    x: data.x,
+                    y: data.y,
+                    vx: data.vx,
+                    vy: data.vy,
+                    playerId: data.playerId,
+                    damage: data.damage || 20,
+                    size: data.size || 5,
+                    color: data.color || '#ffeb3b',
+                    explosive: data.explosive || false,
+                    explosionRadius: data.explosionRadius,
+                    penetration: data.penetration
+                });
+            });
+
+            network.on('playerNameChanged', (data) => {
+                if (players[data.playerId]) {
+                    players[data.playerId].name = data.name;
+                }
+            });
+
+            network.on('playerDamaged', (data) => {
+                if (players[data.playerId]) {
+                    players[data.playerId].health = data.health;
+                    if (data.playerId === playerId && myPlayer) {
+                        myPlayer.health = data.health;
+                    }
+                }
+            });
+
+            network.on('playerDied', (data) => {
+                console.log('Player died:', data.playerId);
+                // Create explosion at player location
+                if (players[data.playerId]) {
+                    const player = players[data.playerId];
+                    const particleCount = 12;
+                    for (let i = 0; i < particleCount; i++) {
+                        const angle = (Math.PI * 2 / particleCount) * i;
+                        const speed = 3 + Math.random() * 3;
+                        particles.push({
+                            x: player.x,
+                            y: player.y,
+                            vx: Math.cos(angle) * speed,
+                            vy: Math.sin(angle) * speed,
+                            color: player.color || '#4ecdc4',
+                            life: 1.0,
+                            size: 8 + Math.random() * 4
+                        });
+                    }
+                }
+            });
+
+            network.on('playerRespawned', (data) => {
+                if (players[data.playerId]) {
+                    players[data.playerId].x = data.x;
+                    players[data.playerId].y = data.y;
+                    players[data.playerId].health = data.health;
+                    players[data.playerId].invulnerable = true;
+                    players[data.playerId].invulnerableUntil = Date.now() + 1500;
+
+                    if (data.playerId === playerId) {
+                        myPlayer.x = data.x;
+                        myPlayer.y = data.y;
+                        myPlayer.health = data.health;
+                        myPlayer.invulnerable = true;
+                        myPlayer.invulnerableUntil = Date.now() + 1500;
+                        currentWeapon = 'pistol';
+                    }
+                }
+            });
+
+            network.on('pickupsUpdate', (data) => {
+                pickups = data.pickups;
+                console.log('📦 Received', pickups.length, 'pickups');
+            });
+
+            network.on('obstaclesUpdate', (data) => {
+                obstacles = data.obstacles;
+                console.log(`Received ${obstacles.length} obstacles from server`);
+            });
+
+            network.on('doorToggled', (data) => {
+                // Handle multiple door blocks (3-block wide doors)
+                const doorIds = data.doorIds || [data.doorId]; // Support both old and new format
+                doorIds.forEach(doorId => {
+                    const door = obstacles.find(o => o.id === doorId);
+                    if (door) {
+                        door.isOpen = data.isOpen;
+                    }
+                });
+                console.log(`${doorIds.length} door block(s) toggled: ${data.isOpen ? 'open' : 'closed'}`);
+            });
+
+            network.on('terrainUpdate', (data) => {
+                terrain = data.terrain;
+                console.log(`Received ${terrain.length} terrain tiles from server`);
+            });
+
+            network.on('floorsUpdate', (data) => {
+                floors = data.floors;
+                console.log(`Received ${floors.length} floor tiles from server`);
+            });
+
+            network.on('buildingsUpdate', (data) => {
+                buildings = data.buildings;
+                console.log(`Received ${buildings.length} buildings from server`);
+            });
+
+            network.on('buildingCaptured', (data) => {
+                const capturedBuilding = buildings.find(b => b.id === data.buildingId);
+                if (capturedBuilding) {
+                    capturedBuilding.ownerId = data.ownerId;
+                    capturedBuilding.ownerName = data.ownerName;
+                    console.log(`${data.ownerName} captured ${data.buildingId}!`);
+                }
+            });
+
+            network.on('buildingNeutralized', (data) => {
+                const neutralBuilding = buildings.find(b => b.id === data.buildingId);
+                if (neutralBuilding) {
+                    neutralBuilding.ownerId = null;
+                    neutralBuilding.ownerName = null;
+                }
+            });
+
+            network.on('buildingLost', (data) => {
+                const lostBuilding = buildings.find(b => b.id === data.buildingId);
+                if (lostBuilding) {
+                    lostBuilding.ownerId = null;
+                    lostBuilding.ownerName = null;
+                }
+            });
+
+            network.on('buildingCaptureProgress', (data) => {
+                const progressBuilding = buildings.find(b => b.id === data.buildingId);
+                if (progressBuilding) {
+                    if (!progressBuilding.captureProgress) progressBuilding.captureProgress = {};
+                    progressBuilding.captureProgress[data.playerId] = data.progress;
+                    progressBuilding.ownerId = data.ownerId;
+                }
+            });
+
+            network.on('obstacleDestroyed', (data) => {
+                // Convert obstacle to debris instead of removing it
+                const destroyedObs = obstacles.find(o => o.id === data.obstacleId);
+                if (destroyedObs && data.isDebris) {
+                    // Convert to debris (walkable rubble)
+                    destroyedObs.isDestroyed = true;
+                    destroyedObs.isWall = false;
+                    destroyedObs.health = 0;
+                    destroyedObs.originalType = destroyedObs.blockType; // Store original type
+                    destroyedObs.blockType = 'debris';
+                } else if (destroyedObs) {
+                    // Legacy: remove if not debris
+                    obstacles = obstacles.filter(o => o.id !== data.obstacleId);
+                }
+
+                // Create small voxel debris particles
+                const centerX = data.x + data.width / 2;
+                const centerY = data.y + data.height / 2;
+
+                for (let i = 0; i < 8; i++) {
+                    particles.push({
+                        x: centerX,
+                        y: centerY,
+                        vx: (Math.random() - 0.5) * 10,
+                        vy: (Math.random() - 0.5) * 10,
+                        size: 4 + Math.random() * 4,
+                        life: 1.0,
+                        color: '#00ffff',
+                        isVoxel: true
+                    });
+                }
+            });
+
+            network.on('obstacleDamaged', (data) => {
+                // Update obstacle health
+                const damagedObs = obstacles.find(o => o.id === data.obstacleId);
+                if (damagedObs) {
+                    damagedObs.health = data.health;
+                }
+            });
+
+            network.on('pong', (data) => {
+                if (pingStart > 0) {
+                    ping = Date.now() - pingStart;
+                    pingStart = 0;
+                }
+            });
+
+            network.on('pickupCollected', (data) => {
+                // Remove pickup
+                pickups = pickups.filter(p => p.id !== data.pickupId);
+
+                if (data.playerId === playerId) {
+                    if (data.pickupType === 'health') {
+                        myPlayer.health = Math.min(myPlayer.maxHealth, myPlayer.health + 30);
+                    } else if (data.pickupType === 'armor') {
+                        myPlayer.armor = Math.min(myPlayer.maxArmor, myPlayer.armor + 50);
+                    } else if (data.pickupType.startsWith('weapon_')) {
+                        const weaponType = data.pickupType.replace('weapon_', '');
+                        currentWeapon = weaponType;
+                        myPlayer.weapon = weaponType;
+                        // Initialize ammo if first time picking up
+                        if (weaponAmmo[weaponType] === undefined) {
+                            weaponAmmo[weaponType] = Constants.WEAPONS[weaponType].ammo;
+                        }
+                    }
+                }
+            });
+
+            network.on('playerArmorUpdate', (data) => {
+                if (players[data.playerId]) {
+                    players[data.playerId].armor = data.armor;
+                    if (data.playerId === playerId && myPlayer) {
+                        myPlayer.armor = data.armor;
+                    }
+                }
+            });
+
+            network.on('playerScrapUpdate', (data) => {
+                if (players[data.playerId]) {
+                    players[data.playerId].scrap = data.scrap;
+                    if (data.playerId === playerId && myPlayer) {
+                        myPlayer.scrap = data.scrap;
+                    }
+                }
+            });
+
+            // Setup close handler
+            network.onClose(() => {
+                console.log('Disconnected from server');
+            });
         }
 
-        function send(data) {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify(data));
-            }
-        }
 
         function updatePlayerCount() {
             document.getElementById('playerCount').textContent = Object.keys(players).length;
@@ -1201,11 +1194,10 @@
                     return false;
                 });
 
-                if (ownedBuilding && ws && ws.readyState === WebSocket.OPEN) {
-                    ws.send(JSON.stringify({
-                        type: 'terminalUpgrade',
+                if (ownedBuilding && network.isConnected()) {
+                    network.send('terminalUpgrade', {
                         buildingId: ownedBuilding.id
-                    }));
+                    });
                 }
             }
 
@@ -1221,20 +1213,18 @@
                         return false;
                     });
 
-                    if (nearbyBuilding && ws && ws.readyState === WebSocket.OPEN) {
+                    if (nearbyBuilding && network.isConnected()) {
                         // Start hacking if not owned, or open management if owned
                         if (nearbyBuilding.ownerId === playerId) {
                             // Open management menu (for now, just upgrade)
-                            ws.send(JSON.stringify({
-                                type: 'terminalUpgrade',
+                            network.send('terminalUpgrade', {
                                 buildingId: nearbyBuilding.id
-                            }));
+                            });
                         } else {
                             // Start hack attempt
-                            ws.send(JSON.stringify({
-                                type: 'startHack',
+                            network.send('startHack', {
                                 buildingId: nearbyBuilding.id
-                            }));
+                            });
                         }
                         return;
                     }
@@ -1245,11 +1235,10 @@
                         Math.hypot(o.x + o.width/2 - myPlayer.x, o.y + o.height/2 - myPlayer.y) < 50
                     );
 
-                    if (nearbyDoor && ws && ws.readyState === WebSocket.OPEN) {
-                        ws.send(JSON.stringify({
-                            type: 'toggleDoor',
+                    if (nearbyDoor && network.isConnected()) {
+                        network.send('toggleDoor', {
                             doorId: nearbyDoor.id
-                        }));
+                        });
                     }
                 } else if (currentAbility && !abilityActive) {
                     // Activate ability
@@ -1263,6 +1252,11 @@
 
         window.addEventListener('keyup', (e) => {
             keys[e.key.toLowerCase()] = false;
+        });
+
+        // Clear all keys when window loses focus (prevents stuck movement)
+        window.addEventListener('blur', () => {
+            Object.keys(keys).forEach(key => keys[key] = false);
         });
 
         window.addEventListener('mousemove', (e) => {
@@ -1437,11 +1431,10 @@
 
         mobileInteractBtn.addEventListener('click', () => {
             if (nearbyInteractable) {
-                if (nearbyInteractable.type === 'door' && ws && ws.readyState === WebSocket.OPEN) {
-                    ws.send(JSON.stringify({
-                        type: 'toggleDoor',
+                if (nearbyInteractable.type === 'door' && network.isConnected()) {
+                    network.send('toggleDoor', {
                         doorId: nearbyInteractable.id
-                    }));
+                    });
                 } else if (nearbyInteractable.type === 'ability' && currentAbility && !abilityActive) {
                     activateAbility();
                 }
@@ -1485,8 +1478,7 @@
                 };
 
                 // Send to server so it persists for all players
-                send({
-                    type: 'dropAbility',
+                network.send('dropAbility', {
                     pickup: dropData
                 });
 
@@ -1526,8 +1518,7 @@
                 });
 
                 if (closestObs) {
-                    send({
-                        type: 'hammerHit',
+                    network.send('hammerHit', {
                         obstacleId: closestObs.id,
                         damage: 30
                     });
@@ -1561,8 +1552,7 @@
                 });
 
                 if (closestObs && myPlayer.scrap >= 1) {
-                    send({
-                        type: 'repairBlock',
+                    network.send('repairBlock', {
                         obstacleId: closestObs.id,
                         repairAmount: 20
                     });
@@ -1623,8 +1613,7 @@
                         penetration: weapon.penetration
                     });
 
-                    send({
-                        type: 'shoot',
+                    network.send('shoot', {
                         bulletId,
                         x: gunTipX,
                         y: gunTipY,
@@ -1863,8 +1852,7 @@
                                     penetration: weapon.penetration
                                 });
 
-                                send({
-                                    type: 'shoot',
+                                network.send('shoot', {
                                     bulletId,
                                     x: gunTipX,
                                     y: gunTipY,
@@ -1919,8 +1907,7 @@
                                         x: myPlayer.x,
                                         y: myPlayer.y
                                     };
-                                    send({
-                                        type: 'dropAbility',
+                                    network.send('dropAbility', {
                                         pickup: dropData
                                     });
                                 }
@@ -1950,7 +1937,7 @@
                         }
 
                         if (canCollect) {
-                            send({ type: 'collectPickup', pickupId: pickup.id });
+                            network.send('collectPickup', { pickupId: pickup.id });
                             lastSentPickup.add(pickup.id);
                             setTimeout(() => lastSentPickup.delete(pickup.id), 500);
                         }
@@ -1971,8 +1958,7 @@
                         Math.abs(roundedAngle - myPlayer.lastSent.angle) > 0.05) {
 
                         pingStart = now;
-                        send({
-                            type: 'move',
+                        network.send('move', {
                             x: roundedX,
                             y: roundedY,
                             angle: roundedAngle
@@ -2018,8 +2004,7 @@
 
                                 // Send damage
                                 if (bullet.playerId === playerId) {
-                                    send({
-                                        type: 'obstacleHit',
+                                    network.send('obstacleHit', {
                                         obstacleId: obs.id,
                                         damage: bullet.damage
                                     });
@@ -2055,8 +2040,7 @@
                             bullet.hitSent = true;
                         } else if (bullet.playerId === playerId && !bullet.hitSent) {
                             // Normal bullet damage
-                            send({
-                                type: 'obstacleHit',
+                            network.send('obstacleHit', {
                                 obstacleId: obs.id,
                                 damage: bullet.damage
                             });
@@ -2101,8 +2085,7 @@
                                     createExplosion(bullet.x, bullet.y, explosionRadius, 500, 100);
                                 } else {
                                     // Normal bullet damage
-                                    send({
-                                        type: 'bulletHit',
+                                    network.send('bulletHit', {
                                         bulletId: bullet.id,
                                         targetId: player.id,
                                         damage: bullet.damage
@@ -2145,8 +2128,7 @@
                             const now = Date.now();
                             if (!blade.lastObstacleHit) blade.lastObstacleHit = {};
                             if (!blade.lastObstacleHit[obs.id] || now - blade.lastObstacleHit[obs.id] > 200) {
-                                send({
-                                    type: 'obstacleHit',
+                                network.send('obstacleHit', {
                                     obstacleId: obs.id,
                                     damage: 20
                                 });
@@ -2177,12 +2159,11 @@
                                 const now = Date.now();
                                 if (!blade.lastHit) blade.lastHit = {};
                                 if (!blade.lastHit[otherPlayer.id] || now - blade.lastHit[otherPlayer.id] > 500) {
-                                    if (ws && ws.readyState === WebSocket.OPEN) {
-                                        ws.send(JSON.stringify({
-                                            type: 'bulletHit',
+                                    if (network.isConnected()) {
+                                        network.send('bulletHit', {
                                             targetId: otherPlayer.id,
                                             damage: 30
-                                        }));
+                                        });
                                         blade.lastHit[otherPlayer.id] = now;
                                     }
                                 }
