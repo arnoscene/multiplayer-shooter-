@@ -3,7 +3,7 @@ const WebSocket = require('ws');
 const express = require('express');
 const http = require('http');
 const path = require('path');
-const { generateTerrain, generateRoads, isGrassland } = require('./terrain');
+const { generateTerrain, generateRoads, isGrassland, TERRAIN_SEED } = require('./terrain');
 const { generateBuildings } = require('./buildings');
 
 const app = express();
@@ -297,7 +297,7 @@ wss.on('connection', (ws) => {
 
           sendToClient(ws, {
             type: 'terrainUpdate',
-            terrain: gameState.terrain
+            terrainSeed: TERRAIN_SEED
           });
 
           sendToClient(ws, {

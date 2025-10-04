@@ -247,6 +247,84 @@
         }
         .color-btn.selected { border-color: white; }
 
+        /* Loading Screen */
+        #loadingScreen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(10, 14, 39, 0.98);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+        }
+        #loadingScreen.active { display: flex; }
+        .loading-content {
+            text-align: center;
+            color: white;
+        }
+        .loading-content h2 {
+            color: #00ff88;
+            font-size: 32px;
+            margin-bottom: 30px;
+        }
+        .loading-progress {
+            width: 400px;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+            overflow: hidden;
+            margin: 20px 0;
+        }
+        .loading-progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #00ff88, #00dd77);
+            width: 0%;
+            transition: width 0.3s;
+        }
+        .loading-status {
+            color: #00ff88;
+            font-size: 16px;
+            margin-top: 15px;
+            min-height: 24px;
+        }
+        .loading-steps {
+            margin-top: 20px;
+            text-align: left;
+        }
+        .loading-step {
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 14px;
+            margin: 8px 0;
+            padding-left: 25px;
+            position: relative;
+        }
+        .loading-step.complete {
+            color: #00ff88;
+        }
+        .loading-step.active {
+            color: white;
+        }
+        .loading-step::before {
+            content: '○';
+            position: absolute;
+            left: 0;
+        }
+        .loading-step.complete::before {
+            content: '✓';
+            color: #00ff88;
+        }
+        .loading-step.active::before {
+            content: '⟳';
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
         /* Mobile Controls */
         .mobile-controls {
             display: none;
@@ -387,6 +465,24 @@
 <body>
     <canvas id="game"></canvas>
 
+    <!-- Loading Screen -->
+    <div id="loadingScreen">
+        <div class="loading-content">
+            <h2>Connecting to Server...</h2>
+            <div class="loading-progress">
+                <div class="loading-progress-bar" id="loadingBar"></div>
+            </div>
+            <div class="loading-status" id="loadingStatus"></div>
+            <div class="loading-steps">
+                <div class="loading-step" id="step-connect">Connecting to server...</div>
+                <div class="loading-step" id="step-terrain">Generating terrain...</div>
+                <div class="loading-step" id="step-buildings">Loading buildings...</div>
+                <div class="loading-step" id="step-obstacles">Loading obstacles...</div>
+                <div class="loading-step" id="step-player">Initializing player...</div>
+            </div>
+        </div>
+    </div>
+
     <!-- Mobile Controls -->
     <div class="mobile-controls">
         <div class="mobile-joystick" id="joystick">
@@ -497,6 +593,7 @@
         import * as Constants from './js/utils/constants.js';
         import * as MathUtils from './js/utils/math.js';
         import * as Helpers from './js/utils/helpers.js';
+        import { generateTerrain, TERRAIN_SEED } from './js/utils/terrain.js';
 
         // Import rendering modules (Phase 2 refactoring)
         import { Renderer } from './js/rendering/Renderer.js';
@@ -744,11 +841,57 @@
         }
 
         function connectToServer(url) {
+            // Show loading screen
+            const loadingScreen = document.getElementById('loadingScreen');
+            const loadingBar = document.getElementById('loadingBar');
+            const loadingStatus = document.getElementById('loadingStatus');
+            loadingScreen.classList.add('active');
+
+            // Track loading progress
+            const loadingSteps = {
+                connect: false,
+                terrain: false,
+                buildings: false,
+                obstacles: false,
+                player: false
+            };
+
+            function updateLoadingProgress() {
+                const completed = Object.values(loadingSteps).filter(v => v).length;
+                const total = Object.keys(loadingSteps).length;
+                const progress = (completed / total) * 100;
+                loadingBar.style.width = progress + '%';
+
+                // Update step states
+                for (const [step, isComplete] of Object.entries(loadingSteps)) {
+                    const stepEl = document.getElementById('step-' + step);
+                    if (isComplete) {
+                        stepEl.classList.remove('active');
+                        stepEl.classList.add('complete');
+                    } else if (!loadingSteps[Object.keys(loadingSteps)[Object.keys(loadingSteps).indexOf(step) - 1]] && Object.keys(loadingSteps).indexOf(step) === 0) {
+                        stepEl.classList.add('active');
+                    } else if (loadingSteps[Object.keys(loadingSteps)[Object.keys(loadingSteps).indexOf(step) - 1]] && !isComplete) {
+                        stepEl.classList.add('active');
+                    }
+                }
+
+                // Hide loading screen when complete
+                if (completed === total) {
+                    loadingStatus.textContent = 'Ready!';
+                    setTimeout(() => {
+                        loadingScreen.classList.remove('active');
+                    }, 500);
+                }
+            }
+
             network.connect(url);
 
             // Setup connection handler
             network.onOpen(() => {
                 console.log('Connection opened');
+                loadingSteps.connect = true;
+                loadingStatus.textContent = 'Connected to server';
+                updateLoadingProgress();
 
                 // Send persistent player ID immediately
                 network.send('register', {
@@ -814,6 +957,10 @@
                 network.send('updateName', { name: playerName });
 
                 document.getElementById('playerName').textContent = playerName;
+
+                loadingSteps.player = true;
+                loadingStatus.textContent = 'Player initialized';
+                updateLoadingProgress();
             });
 
             network.on('playerJoined', (data) => {
@@ -916,6 +1063,9 @@
             network.on('obstaclesUpdate', (data) => {
                 obstacles = data.obstacles;
                 console.log(`Received ${obstacles.length} obstacles from server`);
+                loadingSteps.obstacles = true;
+                loadingStatus.textContent = 'Obstacles loaded';
+                updateLoadingProgress();
             });
 
             network.on('doorToggled', (data) => {
@@ -931,8 +1081,12 @@
             });
 
             network.on('terrainUpdate', (data) => {
-                terrain = data.terrain;
-                console.log(`Received ${terrain.length} terrain tiles from server`);
+                // Generate terrain locally with seed from server
+                terrain = generateTerrain();
+                console.log(`Generated ${terrain.length} terrain tiles locally with seed: ${TERRAIN_SEED}`);
+                loadingSteps.terrain = true;
+                loadingStatus.textContent = 'Terrain generated';
+                updateLoadingProgress();
             });
 
             network.on('floorsUpdate', (data) => {
@@ -943,6 +1097,9 @@
             network.on('buildingsUpdate', (data) => {
                 buildings = data.buildings;
                 console.log(`Received ${buildings.length} buildings from server`);
+                loadingSteps.buildings = true;
+                loadingStatus.textContent = 'Buildings loaded';
+                updateLoadingProgress();
             });
 
             network.on('buildingCaptured', (data) => {

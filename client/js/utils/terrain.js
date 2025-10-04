@@ -257,7 +257,7 @@ function generateRoads(buildings, terrain) {
   console.log('Generated connecting roads between buildings');
 }
 
-module.exports = {
+export {
   generateTerrain,
   generateRoads,
   isGrassland,
