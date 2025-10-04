@@ -507,11 +507,26 @@ wss.on('connection', (ws) => {
           // Handle bullet hitting obstacle
           const obstacle = gameState.obstacles.find(o => o.id === data.obstacleId);
           if (obstacle) {
-            obstacle.health -= data.damage || 20;
+            let damage = data.damage || 20;
+
+            // Check if this block belongs to a captured building (10x protection)
+            if (obstacle.buildingId !== undefined) {
+              const building = gameState.buildings[obstacle.buildingId];
+              if (building && building.ownerId && building.ownerId !== playerId) {
+                // Enemy's captured building - reduce damage by 10x
+                damage = damage / 10;
+              }
+            }
+
+            obstacle.health -= damage;
 
             if (obstacle.health <= 0) {
-              // Remove destroyed obstacle
-              gameState.obstacles = gameState.obstacles.filter(o => o.id !== data.obstacleId);
+              // Convert to debris/rubble tile (walkable, can be rebuilt)
+              obstacle.isDestroyed = true;
+              obstacle.isWall = false; // No longer blocks movement
+              obstacle.health = 0;
+              obstacle.originalType = obstacle.blockType; // Remember original material
+              obstacle.blockType = 'debris'; // New debris type
 
               // Award scrap to player who destroyed it
               player.scrap += 2;
@@ -522,7 +537,8 @@ wss.on('connection', (ws) => {
                 x: obstacle.x,
                 y: obstacle.y,
                 width: obstacle.width,
-                height: obstacle.height
+                height: obstacle.height,
+                isDebris: true // Tell clients it's now debris
               });
 
               broadcast({
@@ -545,26 +561,26 @@ wss.on('connection', (ws) => {
           // Handle hammer destroying blocks
           const hammerObs = gameState.obstacles.find(o => o.id === data.obstacleId);
           if (hammerObs) {
-            // Check if block is within a captured base radius (100px from capture point)
-            let isCapturedBase = false;
-            for (const cp of gameState.capturePoints) {
-              if (cp.owner) {
-                const dx = hammerObs.x - cp.x;
-                const dy = hammerObs.y - cp.y;
-                const dist = Math.sqrt(dx * dx + dy * dy);
-                if (dist < 150) {
-                  isCapturedBase = true;
-                  break;
-                }
+            let damage = data.damage;
+
+            // Check if this block belongs to a captured building (10x protection)
+            if (hammerObs.buildingId !== undefined) {
+              const building = gameState.buildings[hammerObs.buildingId];
+              if (building && building.ownerId && building.ownerId !== playerId) {
+                // Enemy's captured building - reduce damage by 10x
+                damage = damage / 10;
               }
             }
 
-            // If captured base, reduce damage by 75% (harder to destroy)
-            const damage = isCapturedBase ? Math.floor(data.damage * 0.25) : data.damage;
             hammerObs.health -= damage;
 
             if (hammerObs.health <= 0) {
-              gameState.obstacles = gameState.obstacles.filter(o => o.id !== data.obstacleId);
+              // Convert to debris/rubble tile (walkable, can be rebuilt)
+              hammerObs.isDestroyed = true;
+              hammerObs.isWall = false; // No longer blocks movement
+              hammerObs.health = 0;
+              hammerObs.originalType = hammerObs.blockType; // Remember original material
+              hammerObs.blockType = 'debris'; // New debris type
 
               // Award scrap
               player.scrap += 2;
@@ -575,7 +591,8 @@ wss.on('connection', (ws) => {
                 x: hammerObs.x,
                 y: hammerObs.y,
                 width: hammerObs.width,
-                height: hammerObs.height
+                height: hammerObs.height,
+                isDebris: true // Tell clients it's now debris
               });
 
               broadcast({
@@ -597,11 +614,19 @@ wss.on('connection', (ws) => {
           // Handle repair tool restoring block health
           const repairObs = gameState.obstacles.find(o => o.id === data.obstacleId);
           if (repairObs && player.scrap >= 1) {
-            // Cost 1 scrap to repair
+            // Cost 1 scrap to repair 100 health
             player.scrap -= 1;
 
-            // Restore health (up to max)
-            repairObs.health = Math.min(repairObs.maxHealth, repairObs.health + data.repairAmount);
+            // If it's debris, restore it to a proper wall
+            if (repairObs.blockType === 'debris') {
+              repairObs.blockType = repairObs.originalType || 'wood';
+              repairObs.isWall = true;
+              repairObs.isDestroyed = false;
+              repairObs.health = 100; // Start with 100 HP when rebuilding from debris
+            } else {
+              // Normal repair: restore 100 health (up to max)
+              repairObs.health = Math.min(repairObs.maxHealth, repairObs.health + 100);
+            }
 
             broadcast({
               type: 'obstacleDamaged',
@@ -614,6 +639,80 @@ wss.on('connection', (ws) => {
               playerId: playerId,
               scrap: player.scrap
             });
+          }
+          break;
+
+        case 'startHack':
+          // Handle starting a hack on a building
+          const buildingToHack = gameState.buildings.find(b => b.id === data.buildingId);
+          if (buildingToHack && buildingToHack.ownerId !== playerId) {
+            // Initialize hack progress if not exists
+            if (!buildingToHack.hackProgress) buildingToHack.hackProgress = {};
+
+            // Start hack (10 second timer = 100% progress)
+            buildingToHack.hackProgress[playerId] = {
+              progress: 0,
+              startTime: Date.now(),
+              duration: 10000 // 10 seconds
+            };
+
+            ws.send(JSON.stringify({
+              type: 'hackStarted',
+              buildingId: data.buildingId,
+              duration: 10000
+            }));
+          }
+          break;
+
+        case 'terminalUpgrade':
+          // Handle upgrading all walls in a captured building
+          const buildingToUpgrade = gameState.buildings.find(b => b.id === data.buildingId);
+          if (buildingToUpgrade && buildingToUpgrade.ownerId === playerId) {
+            const upgradeCost = 50; // Costs 50 scrap to upgrade all walls
+
+            if (player.scrap >= upgradeCost) {
+              // Deduct scrap
+              player.scrap -= upgradeCost;
+
+              // Upgrade all blocks in this building
+              const buildingIndex = gameState.buildings.indexOf(buildingToUpgrade);
+              const buildingBlocks = gameState.obstacles.filter(obs => obs.buildingId === buildingIndex);
+
+              for (const block of buildingBlocks) {
+                if (!block.isDestroyed) {
+                  // Increase max health by 50%
+                  block.maxHealth = Math.floor(block.maxHealth * 1.5);
+                  block.health = block.maxHealth; // Fully heal during upgrade
+                }
+              }
+
+              broadcast({
+                type: 'buildingUpgraded',
+                buildingId: data.buildingId,
+                newMaxHealth: buildingBlocks[0]?.maxHealth || 60
+              });
+
+              broadcast({
+                type: 'playerScrapUpdate',
+                playerId: playerId,
+                scrap: player.scrap
+              });
+
+              ws.send(JSON.stringify({
+                type: 'terminalMessage',
+                message: `Building upgraded! All walls health increased by 50%`
+              }));
+            } else {
+              ws.send(JSON.stringify({
+                type: 'terminalMessage',
+                message: `Not enough scrap! Need ${upgradeCost}, have ${player.scrap}`
+              }));
+            }
+          } else {
+            ws.send(JSON.stringify({
+              type: 'terminalMessage',
+              message: 'You must own this building to upgrade it!'
+            }));
           }
           break;
 
@@ -875,12 +974,49 @@ setInterval(() => {
 // Building capture zone game loop
 setInterval(() => {
   gameState.buildings.forEach(building => {
+    // Process active hacks
+    if (building.hackProgress) {
+      const now = Date.now();
+      Object.keys(building.hackProgress).forEach(playerId => {
+        const hack = building.hackProgress[playerId];
+        const elapsed = now - hack.startTime;
+        hack.progress = Math.min(100, (elapsed / hack.duration) * 100);
+
+        // Send progress update
+        broadcast({
+          type: 'hackProgress',
+          buildingId: building.id,
+          playerId: playerId,
+          progress: hack.progress
+        });
+
+        // Hack complete!
+        if (hack.progress >= 100) {
+          building.ownerId = playerId;
+          const player = gameState.players.get(playerId);
+          building.ownerName = player?.name || playerId;
+          building.captureProgress = {}; // Clear old capture progress
+          building.hackProgress = {}; // Clear hack progress
+
+          broadcast({
+            type: 'buildingCaptured',
+            buildingId: building.id,
+            ownerId: playerId,
+            ownerName: building.ownerName
+          });
+
+          console.log(`Player ${building.ownerName} hacked ${building.id}!`);
+        }
+      });
+    }
+
     // Check building integrity - lose ownership if too damaged
     if (building.ownerId && building.integrity < 40) {
       console.log(`Building ${building.id} lost due to low integrity (${building.integrity}%)`);
       building.ownerId = null;
       building.ownerName = null;
       building.captureProgress = {};
+      building.hackProgress = {};
       broadcast({
         type: 'buildingLost',
         buildingId: building.id,

@@ -131,11 +131,61 @@ function generateTerrain() {
 function generateRoads(buildings, terrain) {
   const tileSize = 50;
 
-  // For each building, create a road path to nearest neighbor
+  // Step 1: Create perimeter roads around each building
+  for (const building of buildings) {
+    const padding = 30; // Distance from building edge to road
+    const roadWidth = tileSize;
+
+    // North perimeter
+    for (let x = building.x - padding - roadWidth; x < building.x + building.width + padding + roadWidth; x += tileSize) {
+      const rx = Math.floor(x / tileSize) * tileSize;
+      const ry = Math.floor((building.y - padding) / tileSize) * tileSize;
+      const tile = terrain.find(t => t.x === rx && t.y === ry);
+      if (tile && tile.type !== 'water') {
+        tile.type = 'road';
+        tile.speedModifier = 1.3;
+      }
+    }
+
+    // South perimeter
+    for (let x = building.x - padding - roadWidth; x < building.x + building.width + padding + roadWidth; x += tileSize) {
+      const rx = Math.floor(x / tileSize) * tileSize;
+      const ry = Math.floor((building.y + building.height + padding) / tileSize) * tileSize;
+      const tile = terrain.find(t => t.x === rx && t.y === ry);
+      if (tile && tile.type !== 'water') {
+        tile.type = 'road';
+        tile.speedModifier = 1.3;
+      }
+    }
+
+    // West perimeter
+    for (let y = building.y - padding; y < building.y + building.height + padding; y += tileSize) {
+      const rx = Math.floor((building.x - padding) / tileSize) * tileSize;
+      const ry = Math.floor(y / tileSize) * tileSize;
+      const tile = terrain.find(t => t.x === rx && t.y === ry);
+      if (tile && tile.type !== 'water') {
+        tile.type = 'road';
+        tile.speedModifier = 1.3;
+      }
+    }
+
+    // East perimeter
+    for (let y = building.y - padding; y < building.y + building.height + padding; y += tileSize) {
+      const rx = Math.floor((building.x + building.width + padding) / tileSize) * tileSize;
+      const ry = Math.floor(y / tileSize) * tileSize;
+      const tile = terrain.find(t => t.x === rx && t.y === ry);
+      if (tile && tile.type !== 'water') {
+        tile.type = 'road';
+        tile.speedModifier = 1.3;
+      }
+    }
+  }
+
+  // Step 2: Connect buildings within same zone
   for (let i = 0; i < buildings.length; i++) {
     const buildingA = buildings[i];
 
-    // Find closest building
+    // Find closest building in same zone or nearest neighbor
     let closestDist = Infinity;
     let closestBuilding = null;
 
@@ -143,13 +193,18 @@ function generateRoads(buildings, terrain) {
       if (i === j) continue;
       const buildingB = buildings[j];
       const dist = Math.hypot(buildingA.x - buildingB.x, buildingA.y - buildingB.y);
-      if (dist < closestDist) {
-        closestDist = dist;
+
+      // Prioritize same-zone connections
+      const sameZone = buildingA.zoneName === buildingB.zoneName;
+      const effectiveDist = sameZone ? dist * 0.5 : dist; // Half distance for same zone
+
+      if (effectiveDist < closestDist) {
+        closestDist = effectiveDist;
         closestBuilding = buildingB;
       }
     }
 
-    if (closestBuilding && closestDist < 1500) { // Only connect if close enough
+    if (closestBuilding && closestDist < 2000) { // Only connect if close enough
       // Create road path between buildings
       const startX = buildingA.x + buildingA.width / 2;
       const startY = buildingA.y + buildingA.height / 2;
@@ -187,7 +242,8 @@ function generateRoads(buildings, terrain) {
     }
   }
 
-  console.log('Generated roads connecting buildings');
+  console.log('Generated perimeter roads around all buildings');
+  console.log('Generated connecting roads between buildings');
 }
 
 module.exports = {

@@ -1,6 +1,7 @@
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const qrcode = require('qrcode-terminal');
 
 console.log('\x1b[32m========================================\x1b[0m');
 console.log('\x1b[32m   MULTIPLAYER GAME SERVER MANAGER\x1b[0m');
@@ -48,8 +49,8 @@ setTimeout(() => {
 
     console.log('\x1b[35m[TUNNEL]\x1b[0m', output);
 
-    // Look for Pinggy URL pattern (https://xxxxx.a.pinggy.link)
-    const urlMatch = output.match(/https:\/\/[a-z0-9-]+\.a\.pinggy\.(link|online|io)/);
+    // Look for Pinggy URL pattern (https://xxxxx.a.pinggy.link or https://xxxxx.a.free.pinggy.link)
+    const urlMatch = output.match(/https:\/\/[a-z0-9-]+\.a\.(free\.)?pinggy\.(link|online|io)/);
     if (urlMatch && !tunnelUrl) {
       tunnelUrl = urlMatch[0];
       const wsUrl = tunnelUrl.replace('https://', 'wss://');
@@ -66,7 +67,11 @@ setTimeout(() => {
       console.log('\x1b[42m\x1b[30m                                        \x1b[0m');
       console.log('\x1b[42m\x1b[30m  ' + tunnelUrl.padEnd(38) + '\x1b[0m');
       console.log('\x1b[42m\x1b[30m========================================\x1b[0m\n');
-      console.log('\x1b[32m✅ No password required - just share the link!\x1b[0m');
+
+      console.log('\x1b[36m📱 Scan QR code to play on mobile:\x1b[0m\n');
+      qrcode.generate(tunnelUrl, { small: true });
+
+      console.log('\n\x1b[32m✅ No password required - just share the link!\x1b[0m');
       console.log('\x1b[32m✅ Lower latency than localtunnel\x1b[0m\n');
       console.log('\x1b[36m🎮 Local play: http://localhost:3001\x1b[0m\n');
     }

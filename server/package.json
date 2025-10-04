@@ -8,12 +8,17 @@
     "survival": "node survival-server.js",
     "dev": "nodemon server.js"
   },
-  "keywords": ["websocket", "game", "multiplayer"],
+  "keywords": [
+    "websocket",
+    "game",
+    "multiplayer"
+  ],
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "ws": "^8.14.2",
-    "express": "^4.18.2"
+    "express": "^4.18.2",
+    "qrcode-terminal": "^0.12.0",
+    "ws": "^8.14.2"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"

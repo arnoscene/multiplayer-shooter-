@@ -64,171 +64,265 @@ class BSPNode {
   }
 }
 
-// Generate buildings with BSP room layout
+// Generate buildings with BSP room layout in organized zones
 function generateBuildings(gameState, isGrassland) {
   const voxelSize = 20;
-  const buildingCount = 20;
-  let buildingsPlaced = 0;
-  let attempts = 0;
-  const maxAttempts = 200;
   const buildings = [];
+  let buildingIndex = 0;
 
-  while (buildingsPlaced < buildingCount && attempts < maxAttempts) {
-    attempts++;
-
-    // Random position on the map
-    const buildingX = 500 + Math.random() * 4000;
-    const buildingY = 500 + Math.random() * 4000;
-
-    const buildingTypes = ['brick', 'wood', 'stone'];
-    const buildingType = buildingTypes[Math.floor(Math.random() * buildingTypes.length)];
-
-    // Random building size
-    const buildingWidth = 250 + Math.random() * 250;  // 250-500px
-    const buildingHeight = 250 + Math.random() * 250;
-
-    // Check if this area is grassland
-    if (!isGrassland(buildingX, buildingY, buildingWidth, buildingHeight, gameState.terrain)) {
-      continue; // Skip if not on grass
+  // Define map zones with material tiers (wood/sand -> brick/stone -> metal)
+  const zones = [
+    // Zone 1: Military Base (center, 1 large building) - Tier 3: Metal
+    {
+      name: 'military',
+      centerX: 2500,
+      centerY: 2500,
+      count: 1,
+      sizeMin: 500,
+      sizeMax: 500,
+      material: 'metal',
+      spread: 0
+    },
+    // Zone 2: Research Labs (northwest, 4 clustered buildings) - Tier 2: Brick/Stone
+    {
+      name: 'research',
+      centerX: 1200,
+      centerY: 1200,
+      count: 4,
+      sizeMin: 300,
+      sizeMax: 400,
+      material: ['brick', 'stone'],
+      spread: 300
+    },
+    // Zone 3: Small Town (southeast, 10 residential buildings) - Tier 1: Wood/Sand
+    {
+      name: 'town',
+      centerX: 3800,
+      centerY: 3800,
+      count: 10,
+      sizeMin: 250,
+      sizeMax: 350,
+      material: ['wood', 'sand'],
+      spread: 600
+    },
+    // Zone 4: Outpost Bunkers (scattered on edges, 5 small fortified) - Tier 2: Stone
+    {
+      name: 'outpost',
+      positions: [
+        { x: 800, y: 2500 },   // West
+        { x: 4200, y: 2500 },  // East
+        { x: 2500, y: 800 },   // North
+        { x: 2500, y: 4200 },  // South
+        { x: 1500, y: 4000 }   // Southwest
+      ],
+      count: 5,
+      sizeMin: 200,
+      sizeMax: 250,
+      material: 'stone',
+      spread: 100
     }
+  ];
 
-    // Check if overlaps with existing buildings (with spacing)
-    let overlaps = false;
-    for (const obs of gameState.obstacles) {
-      if (buildingX < obs.x + 300 && buildingX + buildingWidth + 300 > obs.x &&
-          buildingY < obs.y + 300 && buildingY + buildingHeight + 300 > obs.y) {
-        overlaps = true;
-        break;
-      }
-    }
-    if (overlaps) continue;
+  // Generate buildings for each zone
+  for (const zone of zones) {
+    for (let i = 0; i < zone.count; i++) {
+      let attempts = 0;
+      const maxAttempts = 50;
+      let placed = false;
 
-    // Create BSP tree for this building
-    const bsp = new BSPNode(0, 0, Math.floor(buildingWidth), Math.floor(buildingHeight));
+      while (!placed && attempts < maxAttempts) {
+        attempts++;
 
-    // Split 2-3 times to create rooms
-    const splits = 2 + Math.floor(Math.random() * 2);
-    const leaves = [bsp];
+        // Position based on zone type
+        let buildingX, buildingY;
+        if (zone.positions) {
+          // Fixed positions with small random offset
+          const pos = zone.positions[i];
+          buildingX = pos.x + (Math.random() - 0.5) * zone.spread;
+          buildingY = pos.y + (Math.random() - 0.5) * zone.spread;
+        } else {
+          // Random within zone spread
+          buildingX = zone.centerX + (Math.random() - 0.5) * zone.spread;
+          buildingY = zone.centerY + (Math.random() - 0.5) * zone.spread;
+        }
 
-    for (let i = 0; i < splits; i++) {
-      const leafToSplit = leaves[Math.floor(Math.random() * leaves.length)];
-      if (leafToSplit.split()) {
-        leaves.splice(leaves.indexOf(leafToSplit), 1);
-        leaves.push(leafToSplit.leftChild, leafToSplit.rightChild);
-      }
-    }
+        // Building size
+        const buildingWidth = zone.sizeMin + Math.random() * (zone.sizeMax - zone.sizeMin);
+        const buildingHeight = zone.sizeMin + Math.random() * (zone.sizeMax - zone.sizeMin);
 
-    bsp.createRooms();
-    const rooms = bsp.getLeaves().map(leaf => leaf.room);
+        // Material type
+        let buildingType;
+        if (Array.isArray(zone.material)) {
+          buildingType = zone.material[Math.floor(Math.random() * zone.material.length)];
+        } else {
+          buildingType = zone.material;
+        }
 
-    // Create outer walls
-    const chunksX = Math.ceil(buildingWidth / voxelSize);
-    const chunksY = Math.ceil(buildingHeight / voxelSize);
+        // Check if this area is grassland (skip for military base - clear terrain for it)
+        if (zone.name !== 'military' && !isGrassland(buildingX, buildingY, buildingWidth, buildingHeight, gameState.terrain)) {
+          continue; // Skip if not on grass
+        }
 
-    for (let vx = 0; vx < chunksX; vx++) {
-      for (let vy = 0; vy < chunksY; vy++) {
-        const worldX = buildingX + vx * voxelSize;
-        const worldY = buildingY + vy * voxelSize;
+        // Check if overlaps with existing buildings (with spacing)
+        let overlaps = false;
+        for (const obs of gameState.obstacles) {
+          if (buildingX < obs.x + 300 && buildingX + buildingWidth + 300 > obs.x &&
+              buildingY < obs.y + 300 && buildingY + buildingHeight + 300 > obs.y) {
+            overlaps = true;
+            break;
+          }
+        }
+        if (overlaps) continue;
 
-        // Check if this is an exterior wall
-        const isExteriorWall = vx === 0 || vx === chunksX - 1 || vy === 0 || vy === chunksY - 1;
+        // Create BSP tree for this building
+        const bsp = new BSPNode(0, 0, Math.floor(buildingWidth), Math.floor(buildingHeight));
 
-        // Check if inside any room (should be walkable)
-        const localX = vx * voxelSize;
-        const localY = vy * voxelSize;
-        const insideRoom = rooms.some(room =>
-          localX >= room.x && localX < room.x + room.width &&
-          localY >= room.y && localY < room.y + room.height
-        );
+        // Split 2-3 times to create rooms (more splits for larger buildings)
+        let splits = 2 + Math.floor(Math.random() * 2);
+        if (zone.name === 'military') splits = 4; // Military base has more rooms
+        const leaves = [bsp];
 
-        // Only place blocks on walls
-        if (isExteriorWall || !insideRoom) {
-          let blockType = buildingType;
+        for (let s = 0; s < splits; s++) {
+          const leafToSplit = leaves[Math.floor(Math.random() * leaves.length)];
+          if (leafToSplit.split()) {
+            leaves.splice(leaves.indexOf(leafToSplit), 1);
+            leaves.push(leafToSplit.leftChild, leafToSplit.rightChild);
+          }
+        }
 
-          if (vy === 0) blockType = 'roof';
-          else if (isExteriorWall && vy === chunksY - 1) {
-            // 3-block wide door in center of south wall
-            const doorCenter = Math.floor(chunksX / 2);
-            if (vx >= doorCenter - 1 && vx <= doorCenter + 1) {
-              blockType = 'door';
-            } else if (Math.random() < 0.15) {
-              blockType = 'window';
+        bsp.createRooms();
+        const rooms = bsp.getLeaves().map(leaf => leaf.room);
+
+        // Create outer walls
+        const chunksX = Math.ceil(buildingWidth / voxelSize);
+        const chunksY = Math.ceil(buildingHeight / voxelSize);
+
+        for (let vx = 0; vx < chunksX; vx++) {
+          for (let vy = 0; vy < chunksY; vy++) {
+            const worldX = buildingX + vx * voxelSize;
+            const worldY = buildingY + vy * voxelSize;
+
+            // Check if this is an exterior wall
+            const isExteriorWall = vx === 0 || vx === chunksX - 1 || vy === 0 || vy === chunksY - 1;
+
+            // Check if inside any room (should be walkable)
+            const localX = vx * voxelSize;
+            const localY = vy * voxelSize;
+            const insideRoom = rooms.some(room =>
+              localX >= room.x && localX < room.x + room.width &&
+              localY >= room.y && localY < room.y + room.height
+            );
+
+            // Only place blocks on walls
+            if (isExteriorWall || !insideRoom) {
+              let blockType = buildingType;
+
+              if (vy === 0) blockType = 'roof';
+              else if (isExteriorWall && vy === chunksY - 1) {
+                // 3-block wide door in center of south wall
+                const doorCenter = Math.floor(chunksX / 2);
+                if (vx >= doorCenter - 1 && vx <= doorCenter + 1) {
+                  blockType = 'door';
+                } else if (Math.random() < 0.15) {
+                  blockType = 'window';
+                }
+              }
+              else if (isExteriorWall && Math.random() < 0.15) blockType = 'window';
+
+              // HP based on material tier: wood/sand=1000, brick/stone=1500, metal=2000
+              let hp = 1000; // Tier 1 default (wood/sand)
+              if (buildingType === 'brick' || buildingType === 'stone') {
+                hp = 1500; // Tier 2
+              } else if (buildingType === 'metal') {
+                hp = 2000; // Tier 3
+              }
+
+              gameState.obstacles.push({
+                id: `building_${buildingIndex}_${vx}_${vy}`,
+                x: worldX,
+                y: worldY,
+                width: voxelSize,
+                height: voxelSize,
+                health: hp,
+                maxHealth: hp,
+                blockType: blockType,
+                isWall: true,
+                isDoor: blockType === 'door',
+                isOpen: false,
+                buildingId: buildingIndex // Track which building this block belongs to
+              });
+            } else if (insideRoom) {
+              // Add floor tile for walkable room area
+              gameState.floors.push({
+                id: `floor_${buildingIndex}_${vx}_${vy}`,
+                x: worldX,
+                y: worldY,
+                size: voxelSize,
+                buildingType: buildingType
+              });
             }
           }
-          else if (isExteriorWall && Math.random() < 0.15) blockType = 'window';
-
-          gameState.obstacles.push({
-            id: `building_${buildingsPlaced}_${vx}_${vy}`,
-            x: worldX,
-            y: worldY,
-            width: voxelSize,
-            height: voxelSize,
-            health: 40,
-            maxHealth: 40,
-            blockType: blockType,
-            isWall: true,
-            isDoor: blockType === 'door',
-            isOpen: false
-          });
-        } else if (insideRoom) {
-          // Add floor tile for walkable room area
-          gameState.floors.push({
-            id: `floor_${buildingsPlaced}_${vx}_${vy}`,
-            x: worldX,
-            y: worldY,
-            size: voxelSize,
-            buildingType: buildingType
-          });
         }
+
+        // Track building for road generation
+        buildings.push({
+          x: buildingX,
+          y: buildingY,
+          width: buildingWidth,
+          height: buildingHeight,
+          rooms: rooms,
+          zoneName: zone.name
+        });
+
+        // Add building to gameState with capture zone
+        const captureX = buildingX + buildingWidth / 2;
+        const captureY = buildingY + buildingHeight / 2;
+
+        gameState.buildings.push({
+          id: `building_${buildingIndex}`,
+          x: buildingX,
+          y: buildingY,
+          width: buildingWidth,
+          height: buildingHeight,
+          rooms: rooms,
+          zoneName: zone.name,
+          buildingType: buildingType,
+
+          // Ownership properties
+          ownerId: null,
+          ownerName: null,
+          captureProgress: {}, // { playerId: progress% }
+
+          // Capture zone
+          captureZone: {
+            x: captureX,
+            y: captureY,
+            radius: 80
+          },
+
+          // Stats
+          totalBlocks: 0, // Will be calculated after all buildings created
+          destroyedBlocks: 0,
+          integrity: 100,
+
+          // Upgrade terminal (placed in first room)
+          terminal: {
+            x: captureX,
+            y: captureY,
+            radius: 50 // Interaction range
+          }
+        });
+
+        buildingIndex++;
+        placed = true;
       }
     }
-
-    // Track building for road generation
-    buildings.push({
-      x: buildingX,
-      y: buildingY,
-      width: buildingWidth,
-      height: buildingHeight,
-      rooms: rooms
-    });
-
-    // Add building to gameState with capture zone
-    const captureX = buildingX + buildingWidth / 2;
-    const captureY = buildingY + buildingHeight / 2;
-
-    gameState.buildings.push({
-      id: `building_${buildingsPlaced}`,
-      x: buildingX,
-      y: buildingY,
-      width: buildingWidth,
-      height: buildingHeight,
-      rooms: rooms,
-
-      // Ownership properties
-      ownerId: null,
-      ownerName: null,
-      captureProgress: {}, // { playerId: progress% }
-
-      // Capture zone
-      captureZone: {
-        x: captureX,
-        y: captureY,
-        radius: 80
-      },
-
-      // Stats
-      totalBlocks: 0, // Will be calculated after all buildings created
-      destroyedBlocks: 0,
-      integrity: 100
-    });
-
-    buildingsPlaced++;
   }
 
   // Calculate total blocks for each building
-  gameState.buildings.forEach(building => {
+  gameState.buildings.forEach((building, index) => {
     const blockCount = gameState.obstacles.filter(obs =>
-      obs.id.startsWith(`building_${gameState.buildings.indexOf(building)}_`)
+      obs.buildingId === index
     ).length;
     building.totalBlocks = blockCount;
   });
@@ -236,9 +330,12 @@ function generateBuildings(gameState, isGrassland) {
   const blockCount = gameState.obstacles.filter(o => o.isWall).length;
   const floorCount = gameState.floors.length;
 
-  console.log(`Scattered ${buildingsPlaced} buildings across grasslands (${attempts} attempts)`);
-  console.log(`Created ${blockCount} building blocks with ${floorCount} floor tiles`);
-  console.log(`Created ${gameState.buildings.length} capturable buildings`);
+  console.log(`Created ${buildingIndex} buildings in organized zones:`);
+  console.log(`  - Military Base: 1 large fortified structure`);
+  console.log(`  - Research Labs: 4 medium buildings`);
+  console.log(`  - Small Town: 10 residential buildings`);
+  console.log(`  - Outposts: 5 fortified bunkers`);
+  console.log(`Total: ${blockCount} building blocks with ${floorCount} floor tiles`);
 
   return buildings;
 }

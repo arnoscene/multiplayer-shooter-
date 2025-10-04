@@ -17,6 +17,13 @@
             position: absolute;
             top: 0;
             left: 0;
+            width: 100vw;
+            height: calc(100vh - 120px); /* Leave space for toolbar */
+        }
+        @media (max-width: 768px) and (orientation: portrait) {
+            canvas {
+                height: calc(100vh - 100px); /* Smaller toolbar in portrait */
+            }
         }
         /* Bottom Toolbar */
         #toolbar {
@@ -249,27 +256,37 @@
             width: 100vw;
             height: 100vh;
             pointer-events: none;
-            z-index: 1000;
+            z-index: 1001; /* Above toolbar */
         }
         .mobile-joystick {
             position: fixed;
-            bottom: 80px;
-            left: 80px;
-            width: 120px;
-            height: 120px;
+            bottom: 130px; /* Just above the 120px toolbar */
+            left: 15%;
+            transform: translateX(-50%);
+            width: 100px;
+            height: 100px;
             pointer-events: auto;
         }
+        /* Portrait mode - smaller controls */
+        @media (max-width: 768px) and (orientation: portrait) {
+            .mobile-joystick {
+                bottom: 110px; /* Just above the 100px toolbar */
+                left: 15%;
+                width: 90px;
+                height: 90px;
+            }
+        }
         .joystick-base {
-            width: 120px;
-            height: 120px;
+            width: 100%;
+            height: 100%;
             border-radius: 50%;
             background: rgba(255, 255, 255, 0.2);
             border: 3px solid rgba(255, 255, 255, 0.4);
             position: absolute;
         }
         .joystick-stick {
-            width: 50px;
-            height: 50px;
+            width: 45px;
+            height: 45px;
             border-radius: 50%;
             background: rgba(0, 255, 136, 0.6);
             border: 3px solid rgba(0, 255, 136, 0.8);
@@ -278,26 +295,92 @@
             left: 50%;
             transform: translate(-50%, -50%);
         }
-        .mobile-shoot-area {
+        @media (max-width: 768px) and (orientation: portrait) {
+            .joystick-stick {
+                width: 40px;
+                height: 40px;
+            }
+        }
+        .mobile-aim-joystick {
             position: fixed;
-            right: 0;
-            bottom: 0;
-            width: 50vw;
-            height: 100vh;
+            bottom: 130px; /* Just above the 120px toolbar */
+            right: 15%;
+            transform: translateX(50%);
+            width: 100px;
+            height: 100px;
             pointer-events: auto;
         }
-        .shoot-indicator {
+        @media (max-width: 768px) and (orientation: portrait) {
+            .mobile-aim-joystick {
+                bottom: 110px; /* Just above the 100px toolbar */
+                right: 15%;
+                width: 90px;
+                height: 90px;
+            }
+        }
+        .mobile-interact-btn {
             position: fixed;
-            top: 50%;
-            right: 100px;
-            transform: translateY(-50%);
-            color: rgba(255, 255, 255, 0.6);
+            bottom: 130px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #00ff88, #00cc66);
+            border: 3px solid #fff;
+            color: white;
             font-size: 14px;
-            text-align: center;
+            font-weight: bold;
+            pointer-events: auto;
+            z-index: 1002;
+            box-shadow: 0 4px 15px rgba(0, 255, 136, 0.5);
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { transform: translateX(-50%) scale(1); }
+            50% { transform: translateX(-50%) scale(1.1); }
+        }
+        .mobile-interact-btn:active {
+            background: linear-gradient(135deg, #00cc66, #00aa55);
+            transform: translateX(-50%) scale(0.95);
+        }
+        @media (max-width: 768px) and (orientation: portrait) {
+            .mobile-interact-btn {
+                bottom: 110px;
+            }
         }
         @media (max-width: 768px), (pointer: coarse) {
-            .mobile-controls { display: block; }
             #controls { display: none !important; }
+        }
+        /* Compact toolbar for portrait mode */
+        @media (max-width: 768px) and (orientation: portrait) {
+            #toolbar {
+                height: 100px;
+                padding: 0 10px;
+            }
+            .player-info {
+                min-width: 140px;
+                gap: 4px;
+            }
+            .player-name {
+                font-size: 14px;
+            }
+            .health-bar {
+                height: 18px;
+            }
+            .armor-bar {
+                height: 14px;
+            }
+            .stamina-bar {
+                height: 10px;
+            }
+            .mobile-joystick {
+                bottom: 110px;
+            }
+            .mobile-shoot-area {
+                bottom: 100px;
+                height: calc(100vh - 100px);
+            }
         }
     </style>
 </head>
@@ -310,11 +393,13 @@
             <div class="joystick-base"></div>
             <div class="joystick-stick" id="joystickStick"></div>
         </div>
-        <div class="mobile-shoot-area" id="shootArea">
-            <div class="shoot-indicator">
-                TAP TO<br>AIM & SHOOT
-            </div>
+        <div class="mobile-aim-joystick" id="aimJoystick">
+            <div class="joystick-base"></div>
+            <div class="joystick-stick" id="aimJoystickStick"></div>
         </div>
+        <button class="mobile-interact-btn" id="mobileInteractBtn" style="display: none;">
+            <span id="interactText">E</span>
+        </button>
     </div>
 
     <!-- Bottom Toolbar -->
@@ -371,6 +456,23 @@
                 <span>Ability:</span>
                 <span class="stat-value" id="abilityName">None</span>
             </div>
+            <div class="stat-item" id="pcIcon" onclick="openTerminal()" style="cursor: pointer; display: none;" title="Building Terminal">
+                <span class="stat-icon" style="font-size: 24px;">💻</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Old-school Terminal Popup -->
+    <div id="terminalPopup" style="display: none;">
+        <div id="terminalContent">
+            <div id="terminalHeader">
+                <span>BUILDING TERMINAL v1.0</span>
+                <button onclick="closeTerminal()" style="float: right;">X</button>
+            </div>
+            <div id="terminalBody">
+                <div id="terminalText"></div>
+            </div>
+            <div id="terminalButtons"></div>
         </div>
     </div>
 
@@ -390,21 +492,29 @@
         </div>
     </div>
 
-    <script>
+    <script type="module">
+        // Import utility modules (Phase 1 refactoring)
+        import * as Constants from './js/utils/constants.js';
+        import * as MathUtils from './js/utils/math.js';
+        import * as Helpers from './js/utils/helpers.js';
+
         const canvas = document.getElementById('game');
         const ctx = canvas.getContext('2d');
 
         // Set canvas size (leave space for toolbar)
         function resizeCanvas() {
             canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight; // Full height
+            // Account for toolbar height
+            const isPortrait = window.innerHeight > window.innerWidth && window.innerWidth <= 768;
+            const toolbarHeight = isPortrait ? 100 : 120;
+            canvas.height = window.innerHeight - toolbarHeight;
         }
         resizeCanvas();
         window.addEventListener('resize', resizeCanvas);
 
-        // Map size (100m = 5000px)
-        const MAP_WIDTH = 5000;
-        const MAP_HEIGHT = 5000;
+        // Map size (100m = 5000px) - Using constants from module
+        const MAP_WIDTH = Constants.MAP_WIDTH;
+        const MAP_HEIGHT = Constants.MAP_HEIGHT;
 
         // Camera for following player
         let cameraX = 0;
@@ -423,8 +533,8 @@
         const keys = {};
         const mouse = { x: canvas.width / 2, y: canvas.height / 2 };
 
-        const PLAYER_SIZE = 20;
-        const MOVE_SPEED = 4;
+        const PLAYER_SIZE = Constants.PLAYER_SIZE;
+        const MOVE_SPEED = Constants.MOVE_SPEED;
 
         // Tool swing animation
         let toolSwingTime = 0;
@@ -436,15 +546,8 @@
         let buildings = []; // Building capture zones
         let currentSpeedModifier = 1.0;
 
-        // Weapon types
-        const WEAPONS = {
-            pistol: { name: 'Pistol', damage: 20, fireRate: 500, bulletSpeed: 12, bulletSize: 5, color: '#ffeb3b', spread: 0, ammo: Infinity },
-            smg: { name: 'SMG', damage: 15, fireRate: 150, bulletSpeed: 14, bulletSize: 4, color: '#ff9800', spread: 0.1, ammo: 120 },
-            shotgun: { name: 'Shotgun', damage: 15, fireRate: 800, bulletSpeed: 10, bulletSize: 6, color: '#f44336', spread: 0.3, pellets: 5, ammo: 24 },
-            rifle: { name: 'Rifle', damage: 35, fireRate: 400, bulletSpeed: 18, bulletSize: 6, color: '#2196f3', spread: 0, ammo: 90 },
-            sniper: { name: 'Sniper', damage: 80, fireRate: 1500, bulletSpeed: 25, bulletSize: 8, color: '#9c27b0', spread: 0, penetration: 4, ammo: 15 },
-            rocket: { name: 'Rocket Launcher', damage: 100, fireRate: 2000, bulletSpeed: 8, bulletSize: 12, color: '#ff0000', spread: 0, explosive: true, explosionRadius: 150, ammo: 5 }
-        };
+        // Weapon types - Using constants from module
+        const WEAPONS = Constants.WEAPONS;
 
         let currentWeapon = 'pistol';
         let weaponAmmo = {}; // Track ammo for each weapon
@@ -638,6 +741,11 @@
             document.getElementById('menu').style.display = 'none';
             document.getElementById('toolbar').style.display = 'flex';
             document.getElementById('playerName').textContent = playerName;
+
+            // Show mobile controls if on mobile
+            if (isMobile) {
+                document.querySelector('.mobile-controls').style.display = 'block';
+            }
 
             connectToServer(serverUrl);
         }
@@ -959,10 +1067,21 @@
                         break;
 
                     case 'obstacleDestroyed':
-                        // Remove obstacle
-                        obstacles = obstacles.filter(o => o.id !== data.obstacleId);
+                        // Convert obstacle to debris instead of removing it
+                        const destroyedObs = obstacles.find(o => o.id === data.obstacleId);
+                        if (destroyedObs && data.isDebris) {
+                            // Convert to debris (walkable rubble)
+                            destroyedObs.isDestroyed = true;
+                            destroyedObs.isWall = false;
+                            destroyedObs.health = 0;
+                            destroyedObs.originalType = destroyedObs.blockType; // Store original type
+                            destroyedObs.blockType = 'debris';
+                        } else if (destroyedObs) {
+                            // Legacy: remove if not debris
+                            obstacles = obstacles.filter(o => o.id !== data.obstacleId);
+                        }
 
-                        // Create small voxel debris
+                        // Create small voxel debris particles
                         const centerX = data.x + data.width / 2;
                         const centerY = data.y + data.height / 2;
 
@@ -1065,10 +1184,56 @@
                 selectTool(3);
             }
 
-            // Door interaction with 'E' key
+            // Terminal interaction with 'T' key
+            if (key === 't') {
+                // Check if near any owned building's terminal
+                const ownedBuilding = buildings.find(b => {
+                    if (b.ownerId === playerId && b.terminal && myPlayer) {
+                        const dist = Math.hypot(myPlayer.x - b.terminal.x, myPlayer.y - b.terminal.y);
+                        return dist < b.terminal.radius;
+                    }
+                    return false;
+                });
+
+                if (ownedBuilding && ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({
+                        type: 'terminalUpgrade',
+                        buildingId: ownedBuilding.id
+                    }));
+                }
+            }
+
+            // Building/Door interaction with 'E' key
             if (key === 'e') {
                 if (!currentAbility || abilityActive) {
-                    // Check for nearby door
+                    // First check for nearby building terminal
+                    const nearbyBuilding = buildings.find(b => {
+                        if (b.terminal && myPlayer) {
+                            const dist = Math.hypot(myPlayer.x - b.terminal.x, myPlayer.y - b.terminal.y);
+                            return dist < b.terminal.radius;
+                        }
+                        return false;
+                    });
+
+                    if (nearbyBuilding && ws && ws.readyState === WebSocket.OPEN) {
+                        // Start hacking if not owned, or open management if owned
+                        if (nearbyBuilding.ownerId === playerId) {
+                            // Open management menu (for now, just upgrade)
+                            ws.send(JSON.stringify({
+                                type: 'terminalUpgrade',
+                                buildingId: nearbyBuilding.id
+                            }));
+                        } else {
+                            // Start hack attempt
+                            ws.send(JSON.stringify({
+                                type: 'startHack',
+                                buildingId: nearbyBuilding.id
+                            }));
+                        }
+                        return;
+                    }
+
+                    // If no building nearby, check for nearby door
                     const nearbyDoor = obstacles.find(o =>
                         o.isDoor &&
                         Math.hypot(o.x + o.width/2 - myPlayer.x, o.y + o.height/2 - myPlayer.y) < 50
@@ -1110,13 +1275,26 @@
         let joystickStartY = 0;
         let joystickDeltaX = 0;
         let joystickDeltaY = 0;
+        let joystickTouchId = null;
+        let aimJoystickActive = false;
+        let aimJoystickStartX = 0;
+        let aimJoystickStartY = 0;
+        let aimJoystickDeltaX = 0;
+        let aimJoystickDeltaY = 0;
+        let aimJoystickTouchId = null;
         let mobileAimX = 0;
         let mobileAimY = 0;
         let isMobile = false;
 
+        // Minimap state for mobile
+        let minimapMinimized = false;
+        let lastMinimapTap = 0;
+        const doubleTapDelay = 300; // ms
+
         const joystickEl = document.getElementById('joystick');
         const joystickStick = document.getElementById('joystickStick');
-        const shootArea = document.getElementById('shootArea');
+        const aimJoystickEl = document.getElementById('aimJoystick');
+        const aimJoystickStick = document.getElementById('aimJoystickStick');
 
         // Detect if device is mobile
         if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
@@ -1126,130 +1304,142 @@
         // Joystick touch handling
         joystickEl.addEventListener('touchstart', (e) => {
             e.preventDefault();
-            const touch = e.touches[0];
+            const touch = e.changedTouches[0];
             const rect = joystickEl.getBoundingClientRect();
             joystickActive = true;
+            joystickTouchId = touch.identifier;
             joystickStartX = rect.left + rect.width / 2;
             joystickStartY = rect.top + rect.height / 2;
         });
 
         window.addEventListener('touchmove', (e) => {
-            if (!joystickActive) return;
-            e.preventDefault();
+            // Handle movement joystick
+            if (joystickActive && joystickTouchId !== null) {
+                for (let i = 0; i < e.touches.length; i++) {
+                    if (e.touches[i].identifier === joystickTouchId) {
+                        const touch = e.touches[i];
+                        const deltaX = touch.clientX - joystickStartX;
+                        const deltaY = touch.clientY - joystickStartY;
 
-            const touch = e.touches[0];
-            const deltaX = touch.clientX - joystickStartX;
-            const deltaY = touch.clientY - joystickStartY;
+                        const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+                        const maxDistance = 35;
 
-            // Limit joystick range
-            const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-            const maxDistance = 35;
+                        if (distance > maxDistance) {
+                            joystickDeltaX = (deltaX / distance) * maxDistance;
+                            joystickDeltaY = (deltaY / distance) * maxDistance;
+                        } else {
+                            joystickDeltaX = deltaX;
+                            joystickDeltaY = deltaY;
+                        }
 
-            if (distance > maxDistance) {
-                joystickDeltaX = (deltaX / distance) * maxDistance;
-                joystickDeltaY = (deltaY / distance) * maxDistance;
-            } else {
-                joystickDeltaX = deltaX;
-                joystickDeltaY = deltaY;
-            }
-
-            // Update visual
-            joystickStick.style.transform = `translate(calc(-50% + ${joystickDeltaX}px), calc(-50% + ${joystickDeltaY}px))`;
-        });
-
-        window.addEventListener('touchend', (e) => {
-            if (joystickActive) {
-                joystickActive = false;
-                joystickDeltaX = 0;
-                joystickDeltaY = 0;
-                joystickStick.style.transform = 'translate(-50%, -50%)';
-            }
-        });
-
-        // Shooting area touch handling
-        shootArea.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            const touch = e.touches[0];
-            mobileAimX = touch.clientX + cameraX;
-            mobileAimY = touch.clientY + cameraY;
-
-            // Trigger shoot
-            if (myPlayer && myPlayer.health > 0) {
-                const now = Date.now();
-                const weapon = WEAPONS[currentWeapon];
-
-                if (now - lastShot >= weapon.fireRate) {
-                    // Check ammo
-                    const currentAmmo = weaponAmmo[currentWeapon] ?? weapon.ammo;
-                    if (currentAmmo <= 0) {
-                        // Out of ammo, switch to pistol
-                        currentWeapon = 'pistol';
-                        return;
+                        joystickStick.style.transform = `translate(calc(-50% + ${joystickDeltaX}px), calc(-50% + ${joystickDeltaY}px))`;
+                        break;
                     }
+                }
+            }
 
-                    lastShot = now;
+            // Handle aim joystick
+            if (aimJoystickActive && aimJoystickTouchId !== null) {
+                for (let i = 0; i < e.touches.length; i++) {
+                    if (e.touches[i].identifier === aimJoystickTouchId) {
+                        const touch = e.touches[i];
+                        const deltaX = touch.clientX - aimJoystickStartX;
+                        const deltaY = touch.clientY - aimJoystickStartY;
 
-                    const dx = mobileAimX - myPlayer.x;
-                    const dy = mobileAimY - myPlayer.y;
-                    const distance = Math.sqrt(dx * dx + dy * dy);
+                        const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+                        const maxDistance = 35;
 
-                    if (distance > 0) {
-                        const baseAngle = Math.atan2(dy, dx);
-                        const pellets = weapon.pellets || 1;
-                        const gunTipX = myPlayer.x + Math.cos(baseAngle) * 25;
-                        const gunTipY = myPlayer.y + Math.sin(baseAngle) * 25;
-
-                        for (let i = 0; i < pellets; i++) {
-                            const spread = weapon.spread * (Math.random() - 0.5) * 2;
-                            const angle = baseAngle + spread;
-                            const vx = Math.cos(angle) * weapon.bulletSpeed;
-                            const vy = Math.sin(angle) * weapon.bulletSpeed;
-                            const bulletId = Date.now() + '_' + i;
-
-                            bullets.push({
-                                id: bulletId,
-                                x: gunTipX,
-                                y: gunTipY,
-                                vx: vx,
-                                vy: vy,
-                                playerId: playerId,
-                                damage: weapon.damage,
-                                size: weapon.bulletSize,
-                                color: weapon.color,
-                                explosive: weapon.explosive || false,
-                                explosionRadius: weapon.explosionRadius,
-                                penetration: weapon.penetration
-                            });
-
-                            if (ws && ws.readyState === WebSocket.OPEN) {
-                                ws.send(JSON.stringify({
-                                    type: 'shoot',
-                                    bulletId: bulletId,
-                                    x: gunTipX,
-                                    y: gunTipY,
-                                    vx: vx,
-                                    vy: vy
-                                }));
-                            }
+                        if (distance > maxDistance) {
+                            aimJoystickDeltaX = (deltaX / distance) * maxDistance;
+                            aimJoystickDeltaY = (deltaY / distance) * maxDistance;
+                        } else {
+                            aimJoystickDeltaX = deltaX;
+                            aimJoystickDeltaY = deltaY;
                         }
 
-                        // Decrease ammo
-                        if (weapon.ammo !== Infinity) {
-                            if (weaponAmmo[currentWeapon] === undefined) {
-                                weaponAmmo[currentWeapon] = weapon.ammo;
-                            }
-                            weaponAmmo[currentWeapon]--;
-                        }
+                        aimJoystickStick.style.transform = `translate(calc(-50% + ${aimJoystickDeltaX}px), calc(-50% + ${aimJoystickDeltaY}px))`;
+                        break;
                     }
                 }
             }
         });
 
-        shootArea.addEventListener('touchmove', (e) => {
+        window.addEventListener('touchend', (e) => {
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                const touch = e.changedTouches[i];
+
+                if (touch.identifier === joystickTouchId) {
+                    joystickActive = false;
+                    joystickTouchId = null;
+                    joystickDeltaX = 0;
+                    joystickDeltaY = 0;
+                    joystickStick.style.transform = 'translate(-50%, -50%)';
+                }
+
+                if (touch.identifier === aimJoystickTouchId) {
+                    aimJoystickActive = false;
+                    aimJoystickTouchId = null;
+                    aimJoystickDeltaX = 0;
+                    aimJoystickDeltaY = 0;
+                    aimJoystickStick.style.transform = 'translate(-50%, -50%)';
+                }
+            }
+        });
+
+        // Aim joystick touch handling
+        aimJoystickEl.addEventListener('touchstart', (e) => {
             e.preventDefault();
+            const touch = e.changedTouches[0];
+            const rect = aimJoystickEl.getBoundingClientRect();
+            aimJoystickActive = true;
+            aimJoystickTouchId = touch.identifier;
+            aimJoystickStartX = rect.left + rect.width / 2;
+            aimJoystickStartY = rect.top + rect.height / 2;
+        });
+
+        // Double-tap minimap to toggle size on mobile
+        canvas.addEventListener('touchstart', (e) => {
+            if (!isMobile) return;
+
             const touch = e.touches[0];
-            mobileAimX = touch.clientX + cameraX;
-            mobileAimY = touch.clientY + cameraY;
+            const touchX = touch.clientX;
+            const touchY = touch.clientY;
+
+            // Check if touch is on minimap area (top-right corner)
+            const minimapSize = minimapMinimized ? 80 : 200;
+            const minimapX = canvas.width - minimapSize - 10;
+            const minimapY = minimapMinimized ? 10 : 20;
+
+            if (touchX >= minimapX && touchX <= minimapX + minimapSize &&
+                touchY >= minimapY && touchY <= minimapY + minimapSize) {
+
+                const now = Date.now();
+                if (now - lastMinimapTap < doubleTapDelay) {
+                    // Double tap detected - toggle minimap size
+                    minimapMinimized = !minimapMinimized;
+                    lastMinimapTap = 0; // Reset to prevent triple tap
+                } else {
+                    lastMinimapTap = now;
+                }
+            }
+        });
+
+        // Mobile interact button
+        const mobileInteractBtn = document.getElementById('mobileInteractBtn');
+        const interactText = document.getElementById('interactText');
+        let nearbyInteractable = null;
+
+        mobileInteractBtn.addEventListener('click', () => {
+            if (nearbyInteractable) {
+                if (nearbyInteractable.type === 'door' && ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({
+                        type: 'toggleDoor',
+                        doorId: nearbyInteractable.id
+                    }));
+                } else if (nearbyInteractable.type === 'ability' && currentAbility && !abilityActive) {
+                    activateAbility();
+                }
+            }
         });
 
         // Ability functions
@@ -1339,21 +1529,22 @@
                 return;
             }
 
-            // Repair tool - restore block health
+            // Repair tool - restore block health (close-range from player)
             if (currentTool === 'repair') {
                 // Trigger swing animation
                 toolSwingTime = Date.now();
 
-                // Find closest damaged block within repair range (50px)
+                // Find closest damaged/debris block within repair range from PLAYER (60px range)
                 let closestObs = null;
-                let closestDist = 50;
+                let closestDist = 60;
 
                 obstacles.forEach(obs => {
-                    if (obs.health < obs.maxHealth) { // Only damaged blocks
+                    // Can repair damaged blocks OR debris blocks
+                    if (obs.health < obs.maxHealth || obs.blockType === 'debris') {
                         const centerX = obs.x + obs.width / 2;
                         const centerY = obs.y + obs.height / 2;
-                        const dx = mouse.x - centerX;
-                        const dy = mouse.y - centerY;
+                        const dx = myPlayer.x - centerX;
+                        const dy = myPlayer.y - centerY;
                         const dist = Math.sqrt(dx * dx + dy * dy);
 
                         if (dist < closestDist) {
@@ -1591,8 +1782,8 @@
                 // Check obstacle collision with sliding
                 const checkCollision = (x, y) => {
                     for (const obs of obstacles) {
-                        // Skip collision with open doors
-                        if (obs.isDoor && obs.isOpen) {
+                        // Skip collision with open doors and debris
+                        if ((obs.isDoor && obs.isOpen) || obs.isWall === false || obs.blockType === 'debris') {
                             continue;
                         }
 
@@ -1622,19 +1813,120 @@
                     }
                 }
 
+                // Check for nearby interactables on mobile
+                if (isMobile) {
+                    // Check for nearby door
+                    const nearbyDoor = obstacles.find(o =>
+                        o.isDoor &&
+                        Math.hypot(o.x + o.width/2 - myPlayer.x, o.y + o.height/2 - myPlayer.y) < 50
+                    );
+
+                    if (nearbyDoor) {
+                        nearbyInteractable = { type: 'door', id: nearbyDoor.id };
+                        interactText.textContent = nearbyDoor.isOpen ? 'Close' : 'Open';
+                        mobileInteractBtn.style.display = 'block';
+                    } else if (currentAbility && !abilityActive) {
+                        nearbyInteractable = { type: 'ability' };
+                        interactText.textContent = 'Use';
+                        mobileInteractBtn.style.display = 'block';
+                    } else {
+                        nearbyInteractable = null;
+                        mobileInteractBtn.style.display = 'none';
+                    }
+                }
+
                 // Update angle
                 let aimX = mouse.x;
                 let aimY = mouse.y;
 
-                // Use mobile aim if on mobile
-                if (isMobile && mobileAimX !== 0 && mobileAimY !== 0) {
+                // Use aim joystick if active on mobile
+                if (isMobile && aimJoystickActive && (aimJoystickDeltaX !== 0 || aimJoystickDeltaY !== 0)) {
+                    // Aim joystick controls direction directly
+                    myPlayer.angle = Math.atan2(aimJoystickDeltaY, aimJoystickDeltaX);
+                } else if (isMobile && mobileAimX !== 0 && mobileAimY !== 0) {
+                    // Fallback to tap-to-aim
                     aimX = mobileAimX;
                     aimY = mobileAimY;
+                    const angleDx = aimX - myPlayer.x;
+                    const angleDy = aimY - myPlayer.y;
+                    myPlayer.angle = Math.atan2(angleDy, angleDx);
+                } else {
+                    // Desktop: aim at mouse
+                    const angleDx = aimX - myPlayer.x;
+                    const angleDy = aimY - myPlayer.y;
+                    myPlayer.angle = Math.atan2(angleDy, angleDx);
                 }
 
-                const angleDx = aimX - myPlayer.x;
-                const angleDy = aimY - myPlayer.y;
-                myPlayer.angle = Math.atan2(angleDy, angleDx);
+                // Auto-fire when aim joystick is active
+                if (isMobile && aimJoystickActive && (aimJoystickDeltaX !== 0 || aimJoystickDeltaY !== 0)) {
+                    const now = Date.now();
+                    const weapon = WEAPONS[currentWeapon];
+
+                    // Check fire rate
+                    if (now - lastShot >= weapon.fireRate) {
+                        // Check ammo
+                        const currentAmmo = weaponAmmo[currentWeapon] ?? weapon.ammo;
+                        if (currentAmmo > 0) {
+                            lastShot = now;
+
+                            // Shoot in the direction of aim joystick
+                            const baseAngle = myPlayer.angle;
+                            const pellets = weapon.pellets || 1;
+                            const gunTipX = myPlayer.x + Math.cos(baseAngle) * 25;
+                            const gunTipY = myPlayer.y + Math.sin(baseAngle) * 25;
+
+                            for (let i = 0; i < pellets; i++) {
+                                const spread = weapon.spread * (Math.random() - 0.5) * 2;
+                                const angle = baseAngle + spread;
+
+                                const bulletId = 'b_' + playerId + '_' + Date.now() + '_' + Math.random();
+                                const vx = Math.cos(angle) * weapon.bulletSpeed;
+                                const vy = Math.sin(angle) * weapon.bulletSpeed;
+
+                                bullets.push({
+                                    id: bulletId,
+                                    x: gunTipX,
+                                    y: gunTipY,
+                                    vx,
+                                    vy,
+                                    playerId: playerId,
+                                    damage: weapon.damage,
+                                    size: weapon.bulletSize,
+                                    color: weapon.color,
+                                    explosive: weapon.explosive || false,
+                                    explosionRadius: weapon.explosionRadius,
+                                    penetration: weapon.penetration
+                                });
+
+                                send({
+                                    type: 'shoot',
+                                    bulletId,
+                                    x: gunTipX,
+                                    y: gunTipY,
+                                    vx,
+                                    vy,
+                                    damage: weapon.damage,
+                                    size: weapon.bulletSize,
+                                    color: weapon.color,
+                                    explosive: weapon.explosive || false,
+                                    explosionRadius: weapon.explosionRadius,
+                                    penetration: weapon.penetration
+                                });
+                            }
+
+                            // Decrease ammo
+                            if (weapon.ammo !== Infinity) {
+                                if (weaponAmmo[currentWeapon] === undefined) {
+                                    weaponAmmo[currentWeapon] = weapon.ammo;
+                                }
+                                weaponAmmo[currentWeapon]--;
+                            }
+                        } else {
+                            // Out of ammo, switch to pistol
+                            currentWeapon = 'pistol';
+                        }
+                    }
+                }
 
                 // Check pickup collision
                 pickups.forEach(pickup => {
@@ -1896,9 +2188,20 @@
             obstacles.forEach(obs => {
                 // Different colors based on block type
                 let color = '#00ffff'; // default cyan
-                if (obs.blockType === 'brick') color = '#a0522d'; // sienna brown
+                if (obs.blockType === 'debris') {
+                    // Debris uses a lighter shade of the original material
+                    if (obs.originalType === 'brick') color = '#c8835e'; // lighter brick
+                    else if (obs.originalType === 'wood') color = '#b8733f'; // lighter wood
+                    else if (obs.originalType === 'stone') color = '#9fb0c0'; // lighter stone
+                    else if (obs.originalType === 'sand') color = '#f4d5a6'; // lighter sand
+                    else if (obs.originalType === 'metal') color = '#b8b8b8'; // lighter metal
+                    else if (obs.originalType === 'roof') color = '#b84545'; // lighter red
+                    else color = '#6a6a6a'; // default lighter gray
+                } else if (obs.blockType === 'brick') color = '#a0522d'; // sienna brown
                 else if (obs.blockType === 'wood') color = '#8b4513'; // saddle brown
                 else if (obs.blockType === 'stone') color = '#708090'; // slate gray
+                else if (obs.blockType === 'sand') color = '#daa520'; // goldenrod (sand)
+                else if (obs.blockType === 'metal') color = '#696969'; // dim gray (metal)
                 else if (obs.blockType === 'window') color = '#87ceeb'; // sky blue (glass)
                 else if (obs.blockType === 'door') {
                     // Open doors are lighter/translucent
@@ -1908,23 +2211,83 @@
 
                 ctx.fillStyle = color;
 
-                // Open doors are semi-transparent
-                if (obs.blockType === 'door' && obs.isOpen) {
-                    ctx.globalAlpha = 0.3;
+                // Debris/rubble is solid but lighter colored
+                if (obs.blockType === 'debris') {
+                    // Just draw as a simple lighter block (no fancy effects)
+                    ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
+                } else {
+                    // Open doors are semi-transparent
+                    if (obs.blockType === 'door' && obs.isOpen) {
+                        ctx.globalAlpha = 0.3;
+                    }
+
+                    ctx.shadowBlur = 15;
+                    ctx.shadowColor = color;
+                    ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
+                    ctx.shadowBlur = 0;
+
+                    // Reset alpha
+                    ctx.globalAlpha = 1.0;
                 }
-
-                ctx.shadowBlur = 15;
-                ctx.shadowColor = color;
-                ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
-                ctx.shadowBlur = 0;
-
-                // Reset alpha
-                ctx.globalAlpha = 1.0;
 
                 // Inner outline for depth
                 ctx.strokeStyle = obs.blockType === 'window' ? '#ffffff' : '#000000';
                 ctx.lineWidth = 1;
                 ctx.strokeRect(obs.x + 1, obs.y + 1, obs.width - 2, obs.height - 2);
+
+                // Damage overlay - cracks on damaged blocks
+                if (obs.health !== undefined && obs.maxHealth !== undefined && obs.health < obs.maxHealth) {
+                    const damagePercent = obs.health / obs.maxHealth;
+
+                    // Draw cracks based on damage
+                    ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)';
+                    ctx.lineWidth = 1;
+
+                    if (damagePercent < 0.75) {
+                        // Light damage - few cracks
+                        ctx.beginPath();
+                        ctx.moveTo(obs.x + obs.width * 0.3, obs.y);
+                        ctx.lineTo(obs.x + obs.width * 0.3, obs.y + obs.height);
+                        ctx.stroke();
+                    }
+                    if (damagePercent < 0.5) {
+                        // Medium damage - more cracks
+                        ctx.beginPath();
+                        ctx.moveTo(obs.x, obs.y + obs.height * 0.5);
+                        ctx.lineTo(obs.x + obs.width, obs.y + obs.height * 0.5);
+                        ctx.stroke();
+                    }
+                    if (damagePercent < 0.25) {
+                        // Heavy damage - lots of cracks
+                        ctx.beginPath();
+                        ctx.moveTo(obs.x + obs.width * 0.7, obs.y);
+                        ctx.lineTo(obs.x + obs.width * 0.7, obs.y + obs.height);
+                        ctx.stroke();
+
+                        ctx.beginPath();
+                        ctx.moveTo(obs.x, obs.y + obs.height * 0.25);
+                        ctx.lineTo(obs.x + obs.width, obs.y + obs.height * 0.75);
+                        ctx.stroke();
+                    }
+
+                    // Health bar above block
+                    const barWidth = obs.width;
+                    const barHeight = 3;
+                    const barX = obs.x;
+                    const barY = obs.y - 6;
+
+                    // Background
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                    ctx.fillRect(barX, barY, barWidth, barHeight);
+
+                    // Health fill - color changes based on health
+                    let healthColor = '#00ff00'; // green
+                    if (damagePercent < 0.5) healthColor = '#ffff00'; // yellow
+                    if (damagePercent < 0.25) healthColor = '#ff0000'; // red
+
+                    ctx.fillStyle = healthColor;
+                    ctx.fillRect(barX, barY, barWidth * damagePercent, barHeight);
+                }
 
                 // Draw "E" prompt for nearby doors
                 if (obs.blockType === 'door' && myPlayer) {
@@ -1939,55 +2302,56 @@
                 }
             });
 
-            // Draw building capture zones
+            // Draw building computer terminals (for hacking/management)
             buildings.forEach(building => {
-                const zone = building.captureZone;
+                const terminal = building.terminal;
+                if (!terminal) return;
 
-                // Determine color based on ownership
-                let zoneColor;
-                let zoneName = '';
-                if (building.ownerId) {
-                    if (building.ownerId === playerId) {
-                        zoneColor = 'rgba(0, 255, 0, 0.2)'; // Green for owned
-                        zoneName = `Your Building`;
-                    } else {
-                        zoneColor = 'rgba(255, 0, 0, 0.2)'; // Red for enemy
-                        zoneName = `${building.ownerName}'s Building`;
-                    }
-                } else {
-                    zoneColor = 'rgba(200, 200, 200, 0.15)'; // Gray for neutral
-                    zoneName = 'Neutral Building';
-                }
+                // Draw PC icon for all buildings (neutral or owned)
+                const pcSize = 25;
 
-                // Draw capture zone circle
-                ctx.fillStyle = zoneColor;
-                ctx.beginPath();
-                ctx.arc(zone.x, zone.y, zone.radius, 0, Math.PI * 2);
-                ctx.fill();
+                // PC monitor (screen)
+                ctx.fillStyle = building.ownerId === playerId ? '#00ffcc' :
+                               (building.ownerId ? '#ff4444' : '#666666');
+                ctx.fillRect(terminal.x - pcSize/2, terminal.y - pcSize/2, pcSize, pcSize * 0.7);
 
-                // Draw zone border
-                ctx.strokeStyle = building.ownerId === playerId ? '#00ff00' : (building.ownerId ? '#ff0000' : '#888888');
+                // Monitor border
+                ctx.strokeStyle = '#ffffff';
                 ctx.lineWidth = 2;
-                ctx.stroke();
+                ctx.strokeRect(terminal.x - pcSize/2, terminal.y - pcSize/2, pcSize, pcSize * 0.7);
 
-                // Draw capture progress arc if someone is capturing
-                if (building.captureProgress && myPlayer) {
-                    const myProgress = building.captureProgress[playerId] || 0;
-                    if (myProgress > 0) {
-                        ctx.strokeStyle = '#00ff00';
-                        ctx.lineWidth = 6;
-                        ctx.beginPath();
-                        ctx.arc(zone.x, zone.y, zone.radius + 5, -Math.PI / 2, (-Math.PI / 2) + (Math.PI * 2 * myProgress / 100));
-                        ctx.stroke();
+                // PC base/stand
+                ctx.fillStyle = '#888888';
+                ctx.fillRect(terminal.x - pcSize/4, terminal.y + pcSize * 0.25, pcSize/2, pcSize * 0.15);
+
+                // PC icon text
+                ctx.fillStyle = '#000000';
+                ctx.font = 'bold 16px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('💻', terminal.x, terminal.y - 3);
+                ctx.textBaseline = 'alphabetic';
+                ctx.textAlign = 'left';
+
+                // Show interaction hint if player is near terminal
+                if (myPlayer) {
+                    const dist = Math.hypot(myPlayer.x - terminal.x, myPlayer.y - terminal.y);
+                    if (dist < terminal.radius) {
+                        ctx.fillStyle = '#ffffff';
+                        ctx.font = 'bold 12px Arial';
+                        ctx.textAlign = 'center';
+
+                        if (building.ownerId === playerId) {
+                            // Owned - show management option
+                            ctx.fillText('Press E to manage building', terminal.x, terminal.y + 30);
+                        } else {
+                            // Not owned - show hack option
+                            ctx.fillText('Press E to hack terminal', terminal.x, terminal.y + 30);
+                        }
+                        ctx.textAlign = 'left';
                     }
                 }
 
-                // Draw ownership label
-                ctx.fillStyle = '#ffffff';
-                ctx.font = 'bold 14px Arial';
-                ctx.textAlign = 'center';
-                ctx.fillText(zoneName, zone.x, zone.y - zone.radius - 10);
-                ctx.textAlign = 'left';
             });
 
             // Draw pickups
@@ -2369,9 +2733,9 @@
 
             // Draw minimap
             if (myPlayer) {
-                const minimapSize = 200;
-                const minimapX = canvas.width - minimapSize - 20;
-                const minimapY = 20;
+                const minimapSize = minimapMinimized ? 80 : 200;
+                const minimapX = canvas.width - minimapSize - 10;
+                const minimapY = minimapMinimized ? 10 : 20;
 
                 // Minimap background
                 ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
@@ -2422,20 +2786,31 @@
 
                 // Minimap label
                 ctx.fillStyle = '#00ff88';
-                ctx.font = 'bold 12px Arial';
-                ctx.fillText('MAP', minimapX + 5, minimapY + 15);
+                if (minimapMinimized) {
+                    ctx.font = 'bold 9px Arial';
+                    ctx.fillText('MAP', minimapX + 3, minimapY + 10);
+                    // Show expand indicator
+                    ctx.fillText('++', minimapX + minimapSize - 15, minimapY + 10);
+                } else {
+                    ctx.font = 'bold 12px Arial';
+                    ctx.fillText('MAP', minimapX + 5, minimapY + 15);
+                    // Show minimize indicator on mobile
+                    if (isMobile) {
+                        ctx.fillText('--', minimapX + minimapSize - 18, minimapY + 15);
+                    }
+                }
             }
 
-            // Debug info - bottom left
+            // Debug info - top left
             ctx.font = '14px Arial';
 
             // FPS
             ctx.fillStyle = fps < 30 ? '#ff0000' : (fps < 50 ? '#ffff00' : '#00ff00');
-            ctx.fillText(`FPS: ${fps}`, 10, canvas.height - 80);
+            ctx.fillText(`FPS: ${fps}`, 10, 25);
 
             // Ping
             ctx.fillStyle = ping > 200 ? '#ff0000' : (ping > 100 ? '#ffff00' : '#00ff00');
-            ctx.fillText(`Ping: ${ping}ms`, 10, canvas.height - 60);
+            ctx.fillText(`Ping: ${ping}ms`, 10, 45);
 
             // Position
             ctx.fillStyle = 'white';
