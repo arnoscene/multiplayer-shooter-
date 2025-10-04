@@ -504,6 +504,13 @@
         // Import network module (Phase 3 refactoring)
         import { NetworkManager } from './js/core/NetworkManager.js';
 
+        // Import game systems (Phase 4 refactoring)
+        import { PlayerController } from './js/systems/PlayerController.js';
+        import { WeaponSystem } from './js/systems/WeaponSystem.js';
+        import { AbilitySystem } from './js/systems/AbilitySystem.js';
+        import { PhysicsSystem } from './js/systems/PhysicsSystem.js';
+        import { ParticleSystem } from './js/systems/ParticleSystem.js';
+
         const canvas = document.getElementById('game');
         const ctx = canvas.getContext('2d');
 
@@ -525,103 +532,27 @@
         const MAP_WIDTH = Constants.MAP_WIDTH;
         const MAP_HEIGHT = Constants.MAP_HEIGHT;
 
-        // Camera for following player
-        let cameraX = 0;
-        let cameraY = 0;
-
         // Game state
         const network = new NetworkManager();
         let playerId = null;
         let players = {};
         let bullets = [];
-        let particles = [];
         let pickups = [];
         let obstacles = [];
         let myPlayer = null;
-
-        const keys = {};
-        const mouse = { x: canvas.width / 2, y: canvas.height / 2 };
-
-        const PLAYER_SIZE = Constants.PLAYER_SIZE;
-        const MOVE_SPEED = Constants.MOVE_SPEED;
-
-        // Tool swing animation
-        let toolSwingTime = 0;
-        let toolSwingDuration = 300; // ms
 
         // Terrain and block types
         let terrain = [];
         let floors = [];
         let buildings = []; // Building capture zones
-        let currentSpeedModifier = 1.0;
 
-        // Weapon types - Using constants from module
-        const WEAPONS = Constants.WEAPONS;
+        // Initialize game systems (Phase 4 refactoring)
+        const particleSystem = new ParticleSystem();
+        const playerController = new PlayerController(canvas, network);
+        const weaponSystem = new WeaponSystem(network);
+        const abilitySystem = new AbilitySystem(network);
+        const physicsSystem = new PhysicsSystem(network, particleSystem);
 
-        let currentWeapon = 'pistol';
-        let weaponAmmo = {}; // Track ammo for each weapon
-        let lastShot = 0;
-        let currentTool = null; // 'hammer', 'repair', or null
-
-        // Ability system
-        let currentAbility = null; // 'bladeswirl', 'shield', 'grapple'
-        let abilityActive = false;
-        let blades = []; // Spinning blades around player
-        let bladeAngle = 0;
-
-        // Explosion helper function
-        function createExplosion(x, y, radius, wallDamage, playerDamage) {
-            // Damage all obstacles in radius
-            obstacles.forEach(obs => {
-                const centerX = obs.x + obs.width / 2;
-                const centerY = obs.y + obs.height / 2;
-                const dx = x - centerX;
-                const dy = y - centerY;
-                const dist = Math.sqrt(dx * dx + dy * dy);
-
-                if (dist < radius) {
-                    const damageFalloff = 1 - (dist / radius);
-                    const damage = Math.floor(wallDamage * damageFalloff);
-
-                    network.send('obstacleHit', {
-                        obstacleId: obs.id,
-                        damage: damage
-                    });
-                }
-            });
-
-            // Damage all players in radius (including self!)
-            Object.values(players).forEach(player => {
-                const dx = x - player.x;
-                const dy = y - player.y;
-                const dist = Math.sqrt(dx * dx + dy * dy);
-
-                if (dist < radius) {
-                    const damageFalloff = 1 - (dist / radius);
-                    const damage = Math.floor(playerDamage * damageFalloff);
-
-                    network.send('bulletHit', {
-                        bulletId: 'explosion_' + Date.now() + '_' + Math.random(),
-                        targetId: player.id,
-                        damage: damage
-                    });
-                }
-            });
-
-            // Create explosion particles
-            for (let i = 0; i < 30; i++) {
-                const angle = (Math.PI * 2 / 30) * i;
-                particles.push({
-                    x: x,
-                    y: y,
-                    vx: Math.cos(angle) * (8 + Math.random() * 8),
-                    vy: Math.sin(angle) * (8 + Math.random() * 8),
-                    size: 5 + Math.random() * 8,
-                    life: 1.0,
-                    color: i % 3 === 0 ? '#ff6600' : '#ffaa00'
-                });
-            }
-        }
 
         // FPS tracking
         let fps = 60;
@@ -750,34 +681,17 @@
             document.getElementById('playerName').textContent = playerName;
 
             // Show mobile controls if on mobile
-            if (isMobile) {
+            if (playerController.isMobile) {
                 document.querySelector('.mobile-controls').style.display = 'block';
             }
 
             connectToServer(serverUrl);
         }
 
-        // Tool selection function
-        function selectTool(slot) {
-            // Remove active class from all slots
-            document.getElementById('slot1').classList.remove('active');
-            document.getElementById('slot2').classList.remove('active');
-            document.getElementById('slot3').classList.remove('active');
-
-            // Add active class to selected slot
-            document.getElementById('slot' + slot).classList.add('active');
-
-            // Update current tool
-            if (slot === 1) {
-                currentTool = 'hammer';
-                console.log('🔨 Hammer equipped');
-            } else if (slot === 2) {
-                currentTool = null;
-                console.log('🔫 Weapon equipped');
-            } else if (slot === 3) {
-                currentTool = 'repair';
-                console.log('🔧 Repair tool equipped');
-            }
+        // Tool selection function (delegates to WeaponSystem)
+        // Make it global so onclick handlers can access it
+        window.selectTool = function(slot) {
+            weaponSystem.selectTool(slot);
         }
 
         // Update UI function
@@ -802,11 +716,12 @@
             // Update scrap
             document.getElementById('scrapCount').textContent = myPlayer.scrap || 0;
 
-            // Update ammo
-            const currentAmmo = weaponAmmo[currentWeapon] ?? Constants.WEAPONS[currentWeapon]?.ammo;
+            // Update ammo (uses WeaponSystem)
+            const currentAmmo = weaponSystem.getCurrentAmmo();
             document.getElementById('ammoCount').textContent = currentAmmo === Infinity ? '∞' : currentAmmo;
 
-            // Update weapon label
+            // Update weapon label (uses WeaponSystem)
+            const currentWeapon = weaponSystem.getCurrentWeapon();
             if (currentWeapon && Constants.WEAPONS[currentWeapon]) {
                 document.getElementById('weaponLabel').textContent = Constants.WEAPONS[currentWeapon].name;
             }
@@ -879,6 +794,12 @@
                     invulnerableUntil: Date.now() + 1500
                 };
                 players[playerId] = myPlayer;
+
+                // Initialize game systems with player reference (Phase 4)
+                playerController.setPlayer(myPlayer, playerId);
+                weaponSystem.setPlayer(myPlayer, playerId);
+                abilitySystem.setPlayer(myPlayer, playerId);
+                physicsSystem.setPlayer(myPlayer, playerId);
 
                 // Add other players
                 data.players.forEach(p => {
@@ -961,23 +882,10 @@
 
             network.on('playerDied', (data) => {
                 console.log('Player died:', data.playerId);
-                // Create explosion at player location
+                // Create explosion at player location (uses ParticleSystem)
                 if (players[data.playerId]) {
                     const player = players[data.playerId];
-                    const particleCount = 12;
-                    for (let i = 0; i < particleCount; i++) {
-                        const angle = (Math.PI * 2 / particleCount) * i;
-                        const speed = 3 + Math.random() * 3;
-                        particles.push({
-                            x: player.x,
-                            y: player.y,
-                            vx: Math.cos(angle) * speed,
-                            vy: Math.sin(angle) * speed,
-                            color: player.color || '#4ecdc4',
-                            life: 1.0,
-                            size: 8 + Math.random() * 4
-                        });
-                    }
+                    particleSystem.createDeathParticles(player.x, player.y, player.color);
                 }
             });
 
@@ -995,7 +903,7 @@
                         myPlayer.health = data.health;
                         myPlayer.invulnerable = true;
                         myPlayer.invulnerableUntil = Date.now() + 1500;
-                        currentWeapon = 'pistol';
+                        weaponSystem.switchWeapon('pistol');
                     }
                 }
             });
@@ -1086,22 +994,10 @@
                     obstacles = obstacles.filter(o => o.id !== data.obstacleId);
                 }
 
-                // Create small voxel debris particles
+                // Create small voxel debris particles (uses ParticleSystem)
                 const centerX = data.x + data.width / 2;
                 const centerY = data.y + data.height / 2;
-
-                for (let i = 0; i < 8; i++) {
-                    particles.push({
-                        x: centerX,
-                        y: centerY,
-                        vx: (Math.random() - 0.5) * 10,
-                        vy: (Math.random() - 0.5) * 10,
-                        size: 4 + Math.random() * 4,
-                        life: 1.0,
-                        color: '#00ffff',
-                        isVoxel: true
-                    });
-                }
+                particleSystem.createDebrisParticles(centerX, centerY, 8);
             });
 
             network.on('obstacleDamaged', (data) => {
@@ -1130,12 +1026,7 @@
                         myPlayer.armor = Math.min(myPlayer.maxArmor, myPlayer.armor + 50);
                     } else if (data.pickupType.startsWith('weapon_')) {
                         const weaponType = data.pickupType.replace('weapon_', '');
-                        currentWeapon = weaponType;
-                        myPlayer.weapon = weaponType;
-                        // Initialize ammo if first time picking up
-                        if (weaponAmmo[weaponType] === undefined) {
-                            weaponAmmo[weaponType] = Constants.WEAPONS[weaponType].ammo;
-                        }
+                        weaponSystem.switchWeapon(weaponType);
                     }
                 }
             });
@@ -1169,23 +1060,13 @@
             document.getElementById('playerCount').textContent = Object.keys(players).length;
         }
 
-        // Input handlers
+        // Building/Door/Terminal interaction handlers (E and T keys)
+        // Note: Other input handling is now in PlayerController, WeaponSystem, and AbilitySystem
         window.addEventListener('keydown', (e) => {
             const key = e.key.toLowerCase();
-            keys[key] = true;
-
-            // Tool selection
-            if (key === '1') {
-                selectTool(1);
-            } else if (key === '2') {
-                selectTool(2);
-            } else if (key === '3') {
-                selectTool(3);
-            }
 
             // Terminal interaction with 'T' key
             if (key === 't') {
-                // Check if near any owned building's terminal
                 const ownedBuilding = buildings.find(b => {
                     if (b.ownerId === playerId && b.terminal && myPlayer) {
                         const dist = Math.hypot(myPlayer.x - b.terminal.x, myPlayer.y - b.terminal.y);
@@ -1203,6 +1084,9 @@
 
             // Building/Door interaction with 'E' key
             if (key === 'e') {
+                const currentAbility = abilitySystem.getCurrentAbility();
+                const abilityActive = abilitySystem.isAbilityActive();
+
                 if (!currentAbility || abilityActive) {
                     // First check for nearby building terminal
                     const nearbyBuilding = buildings.find(b => {
@@ -1214,14 +1098,11 @@
                     });
 
                     if (nearbyBuilding && network.isConnected()) {
-                        // Start hacking if not owned, or open management if owned
                         if (nearbyBuilding.ownerId === playerId) {
-                            // Open management menu (for now, just upgrade)
                             network.send('terminalUpgrade', {
                                 buildingId: nearbyBuilding.id
                             });
                         } else {
-                            // Start hack attempt
                             network.send('startHack', {
                                 buildingId: nearbyBuilding.id
                             });
@@ -1240,28 +1121,9 @@
                             doorId: nearbyDoor.id
                         });
                     }
-                } else if (currentAbility && !abilityActive) {
-                    // Activate ability
-                    activateAbility();
                 }
-            } else if (key === 'q' && currentAbility) {
-                // Drop ability as pickup
-                dropAbility();
+                // Ability activation is handled in AbilitySystem
             }
-        });
-
-        window.addEventListener('keyup', (e) => {
-            keys[e.key.toLowerCase()] = false;
-        });
-
-        // Clear all keys when window loses focus (prevents stuck movement)
-        window.addEventListener('blur', () => {
-            Object.keys(keys).forEach(key => keys[key] = false);
-        });
-
-        window.addEventListener('mousemove', (e) => {
-            mouse.x = e.clientX + cameraX;
-            mouse.y = e.clientY + cameraY;
         });
 
         // Prevent right-click context menu
@@ -1269,137 +1131,14 @@
             e.preventDefault();
         });
 
-        // Mobile touch controls
-        let joystickActive = false;
-        let joystickStartX = 0;
-        let joystickStartY = 0;
-        let joystickDeltaX = 0;
-        let joystickDeltaY = 0;
-        let joystickTouchId = null;
-        let aimJoystickActive = false;
-        let aimJoystickStartX = 0;
-        let aimJoystickStartY = 0;
-        let aimJoystickDeltaX = 0;
-        let aimJoystickDeltaY = 0;
-        let aimJoystickTouchId = null;
-        let mobileAimX = 0;
-        let mobileAimY = 0;
-        let isMobile = false;
-
         // Minimap state for mobile
         let minimapMinimized = false;
         let lastMinimapTap = 0;
         const doubleTapDelay = 300; // ms
 
-        const joystickEl = document.getElementById('joystick');
-        const joystickStick = document.getElementById('joystickStick');
-        const aimJoystickEl = document.getElementById('aimJoystick');
-        const aimJoystickStick = document.getElementById('aimJoystickStick');
-
-        // Detect if device is mobile
-        if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
-            isMobile = true;
-        }
-
-        // Joystick touch handling
-        joystickEl.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            const touch = e.changedTouches[0];
-            const rect = joystickEl.getBoundingClientRect();
-            joystickActive = true;
-            joystickTouchId = touch.identifier;
-            joystickStartX = rect.left + rect.width / 2;
-            joystickStartY = rect.top + rect.height / 2;
-        });
-
-        window.addEventListener('touchmove', (e) => {
-            // Handle movement joystick
-            if (joystickActive && joystickTouchId !== null) {
-                for (let i = 0; i < e.touches.length; i++) {
-                    if (e.touches[i].identifier === joystickTouchId) {
-                        const touch = e.touches[i];
-                        const deltaX = touch.clientX - joystickStartX;
-                        const deltaY = touch.clientY - joystickStartY;
-
-                        const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-                        const maxDistance = 35;
-
-                        if (distance > maxDistance) {
-                            joystickDeltaX = (deltaX / distance) * maxDistance;
-                            joystickDeltaY = (deltaY / distance) * maxDistance;
-                        } else {
-                            joystickDeltaX = deltaX;
-                            joystickDeltaY = deltaY;
-                        }
-
-                        joystickStick.style.transform = `translate(calc(-50% + ${joystickDeltaX}px), calc(-50% + ${joystickDeltaY}px))`;
-                        break;
-                    }
-                }
-            }
-
-            // Handle aim joystick
-            if (aimJoystickActive && aimJoystickTouchId !== null) {
-                for (let i = 0; i < e.touches.length; i++) {
-                    if (e.touches[i].identifier === aimJoystickTouchId) {
-                        const touch = e.touches[i];
-                        const deltaX = touch.clientX - aimJoystickStartX;
-                        const deltaY = touch.clientY - aimJoystickStartY;
-
-                        const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-                        const maxDistance = 35;
-
-                        if (distance > maxDistance) {
-                            aimJoystickDeltaX = (deltaX / distance) * maxDistance;
-                            aimJoystickDeltaY = (deltaY / distance) * maxDistance;
-                        } else {
-                            aimJoystickDeltaX = deltaX;
-                            aimJoystickDeltaY = deltaY;
-                        }
-
-                        aimJoystickStick.style.transform = `translate(calc(-50% + ${aimJoystickDeltaX}px), calc(-50% + ${aimJoystickDeltaY}px))`;
-                        break;
-                    }
-                }
-            }
-        });
-
-        window.addEventListener('touchend', (e) => {
-            for (let i = 0; i < e.changedTouches.length; i++) {
-                const touch = e.changedTouches[i];
-
-                if (touch.identifier === joystickTouchId) {
-                    joystickActive = false;
-                    joystickTouchId = null;
-                    joystickDeltaX = 0;
-                    joystickDeltaY = 0;
-                    joystickStick.style.transform = 'translate(-50%, -50%)';
-                }
-
-                if (touch.identifier === aimJoystickTouchId) {
-                    aimJoystickActive = false;
-                    aimJoystickTouchId = null;
-                    aimJoystickDeltaX = 0;
-                    aimJoystickDeltaY = 0;
-                    aimJoystickStick.style.transform = 'translate(-50%, -50%)';
-                }
-            }
-        });
-
-        // Aim joystick touch handling
-        aimJoystickEl.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            const touch = e.changedTouches[0];
-            const rect = aimJoystickEl.getBoundingClientRect();
-            aimJoystickActive = true;
-            aimJoystickTouchId = touch.identifier;
-            aimJoystickStartX = rect.left + rect.width / 2;
-            aimJoystickStartY = rect.top + rect.height / 2;
-        });
-
         // Double-tap minimap to toggle size on mobile
         canvas.addEventListener('touchstart', (e) => {
-            if (!isMobile) return;
+            if (!playerController.isMobile) return;
 
             const touch = e.touches[0];
             const touchX = touch.clientX;
@@ -1415,9 +1154,8 @@
 
                 const now = Date.now();
                 if (now - lastMinimapTap < doubleTapDelay) {
-                    // Double tap detected - toggle minimap size
                     minimapMinimized = !minimapMinimized;
-                    lastMinimapTap = 0; // Reset to prevent triple tap
+                    lastMinimapTap = 0;
                 } else {
                     lastMinimapTap = now;
                 }
@@ -1435,206 +1173,18 @@
                     network.send('toggleDoor', {
                         doorId: nearbyInteractable.id
                     });
-                } else if (nearbyInteractable.type === 'ability' && currentAbility && !abilityActive) {
-                    activateAbility();
+                } else if (nearbyInteractable.type === 'ability') {
+                    abilitySystem.activateAbility();
                 }
             }
         });
 
-        // Ability functions
-        function activateAbility() {
-            if (currentAbility === 'bladeswirl') {
-                abilityActive = true;
-                // Create 4 spinning blades
-                blades = [];
-                for (let i = 0; i < 4; i++) {
-                    blades.push({
-                        angle: (Math.PI * 2 / 4) * i,
-                        radius: 60
-                    });
-                }
-                document.getElementById('abilityName').textContent = 'Blade Swirl (ACTIVE)';
-                document.getElementById('abilityName').style.color = '#ff00ff';
-
-                // Deactivate after 10 seconds
-                setTimeout(() => {
-                    abilityActive = false;
-                    blades = [];
-                    currentAbility = null;
-                    document.getElementById('abilityName').textContent = 'None';
-                    document.getElementById('abilityName').style.color = '#00ffff';
-                }, 10000);
-            }
-        }
-
-        function dropAbility() {
-            // Create pickup where player drops it
-            if (myPlayer && currentAbility) {
-                const dropData = {
-                    id: 'pickup_dropped_' + Date.now(),
-                    type: 'ability_' + currentAbility,
-                    x: myPlayer.x,
-                    y: myPlayer.y
-                };
-
-                // Send to server so it persists for all players
-                network.send('dropAbility', {
-                    pickup: dropData
-                });
-
-                currentAbility = null;
-                abilityActive = false;
-                blades = [];
-                document.getElementById('abilityName').textContent = 'None';
-                document.getElementById('abilityName').style.color = '#00ffff';
-            }
-        }
-
-        window.addEventListener('click', () => {
-            if (!myPlayer || myPlayer.health <= 0) return;
-
-            const now = Date.now();
-
-            // Hammer tool - destroy blocks
-            if (currentTool === 'hammer') {
-                // Trigger swing animation
-                toolSwingTime = Date.now();
-
-                // Find closest block within hammer range (50px)
-                let closestObs = null;
-                let closestDist = 50;
-
-                obstacles.forEach(obs => {
-                    const centerX = obs.x + obs.width / 2;
-                    const centerY = obs.y + obs.height / 2;
-                    const dx = mouse.x - centerX;
-                    const dy = mouse.y - centerY;
-                    const dist = Math.sqrt(dx * dx + dy * dy);
-
-                    if (dist < closestDist) {
-                        closestObs = obs;
-                        closestDist = dist;
-                    }
-                });
-
-                if (closestObs) {
-                    network.send('hammerHit', {
-                        obstacleId: closestObs.id,
-                        damage: 30
-                    });
-                }
-                return;
-            }
-
-            // Repair tool - restore block health (close-range from player)
-            if (currentTool === 'repair') {
-                // Trigger swing animation
-                toolSwingTime = Date.now();
-
-                // Find closest damaged/debris block within repair range from PLAYER (60px range)
-                let closestObs = null;
-                let closestDist = 60;
-
-                obstacles.forEach(obs => {
-                    // Can repair damaged blocks OR debris blocks
-                    if (obs.health < obs.maxHealth || obs.blockType === 'debris') {
-                        const centerX = obs.x + obs.width / 2;
-                        const centerY = obs.y + obs.height / 2;
-                        const dx = myPlayer.x - centerX;
-                        const dy = myPlayer.y - centerY;
-                        const dist = Math.sqrt(dx * dx + dy * dy);
-
-                        if (dist < closestDist) {
-                            closestObs = obs;
-                            closestDist = dist;
-                        }
-                    }
-                });
-
-                if (closestObs && myPlayer.scrap >= 1) {
-                    network.send('repairBlock', {
-                        obstacleId: closestObs.id,
-                        repairAmount: 20
-                    });
-                } else if (closestObs && myPlayer.scrap < 1) {
-                    console.log('❌ Need 1 scrap to repair');
-                }
-                return;
-            }
-
-            const weapon = Constants.WEAPONS[currentWeapon];
-
-            // Check fire rate
-            if (now - lastShot < weapon.fireRate) return;
-
-            // Check ammo
-            const currentAmmo = weaponAmmo[currentWeapon] ?? weapon.ammo;
-            if (currentAmmo <= 0) {
-                // Out of ammo, switch to pistol
-                currentWeapon = 'pistol';
-                return;
-            }
-
-            lastShot = now;
-
-            // Calculate angle to mouse first
-            const dx = mouse.x - myPlayer.x;
-            const dy = mouse.y - myPlayer.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-
-            if (distance > 0) {
-                const baseAngle = Math.atan2(dy, dx);
-                const pellets = weapon.pellets || 1;
-
-                // Spawn bullets from gun tip (30px from center)
-                const gunTipX = myPlayer.x + Math.cos(baseAngle) * 25;
-                const gunTipY = myPlayer.y + Math.sin(baseAngle) * 25;
-
-                for (let i = 0; i < pellets; i++) {
-                    const spread = weapon.spread * (Math.random() - 0.5) * 2;
-                    const angle = baseAngle + spread;
-
-                    const bulletId = 'b_' + playerId + '_' + Date.now() + '_' + Math.random();
-                    const vx = Math.cos(angle) * weapon.bulletSpeed;
-                    const vy = Math.sin(angle) * weapon.bulletSpeed;
-
-                    bullets.push({
-                        id: bulletId,
-                        x: gunTipX,
-                        y: gunTipY,
-                        vx,
-                        vy,
-                        playerId: playerId,
-                        damage: weapon.damage,
-                        size: weapon.bulletSize,
-                        color: weapon.color,
-                        explosive: weapon.explosive || false,
-                        explosionRadius: weapon.explosionRadius,
-                        penetration: weapon.penetration
-                    });
-
-                    network.send('shoot', {
-                        bulletId,
-                        x: gunTipX,
-                        y: gunTipY,
-                        vx,
-                        vy,
-                        damage: weapon.damage,
-                        size: weapon.bulletSize,
-                        color: weapon.color,
-                        explosive: weapon.explosive || false,
-                        explosionRadius: weapon.explosionRadius,
-                        penetration: weapon.penetration
-                    });
-                }
-
-                // Decrease ammo
-                if (weapon.ammo !== Infinity) {
-                    if (weaponAmmo[currentWeapon] === undefined) {
-                        weaponAmmo[currentWeapon] = weapon.ammo;
-                    }
-                    weaponAmmo[currentWeapon]--;
-                }
+        // Click handler (delegates to WeaponSystem)
+        window.addEventListener('click', (e) => {
+            const mouse = playerController.getMousePosition();
+            const newBullets = weaponSystem.handleClick(e, mouse, obstacles);
+            if (newBullets) {
+                bullets.push(...newBullets);
             }
         });
 
@@ -1656,24 +1206,19 @@
                 fpsUpdateTime = now;
             }
 
-            // Update UI is now handled by updateUI() function called separately
-
             // Interpolate other players' positions for smooth movement
             Object.values(players).forEach(player => {
                 if (player.id !== playerId && player.targetX !== undefined) {
-                    // Calculate distance to target
                     const distX = player.targetX - player.x;
                     const distY = player.targetY - player.y;
                     const distance = Math.sqrt(distX * distX + distY * distY);
 
-                    // Use slower interpolation, but speed up if too far behind
-                    let lerpFactor = 0.15; // Slower default
-                    if (distance > 50) lerpFactor = 0.25; // Speed up if desynced
+                    let lerpFactor = 0.15;
+                    if (distance > 50) lerpFactor = 0.25;
 
                     player.x += distX * lerpFactor;
                     player.y += distY * lerpFactor;
 
-                    // Interpolate angle (handle wrapping)
                     let angleDiff = player.targetAngle - player.angle;
                     if (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
                     if (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
@@ -1681,99 +1226,19 @@
                 }
             });
 
-            // Update player
+            // Update player (uses PlayerController system)
             if (myPlayer && myPlayer.health > 0) {
-                // Get speed modifier from current terrain
-                currentSpeedModifier = 1.0; // default
-                for (const tile of terrain) {
-                    if (myPlayer.x >= tile.x && myPlayer.x < tile.x + tile.size &&
-                        myPlayer.y >= tile.y && myPlayer.y < tile.y + tile.size) {
-                        currentSpeedModifier = tile.speedModifier;
-                        break;
-                    }
-                }
-
-                let dx = 0, dy = 0;
-
-                // Check if sprinting
-                const isSprinting = keys['shift'] && myPlayer.stamina > 0;
-                const sprintMultiplier = isSprinting ? 1.8 : 1.0;
-
-                // Stamina drain/regen
-                const isMoving = keys['w'] || keys['s'] || keys['a'] || keys['d'] || keys['arrowup'] || keys['arrowdown'] || keys['arrowleft'] || keys['arrowright'] || (isMobile && joystickActive);
-                if (isSprinting && isMoving) {
-                    myPlayer.stamina = Math.max(0, myPlayer.stamina - 0.5); // Drain 0.5 per frame when sprinting
-                } else {
-                    myPlayer.stamina = Math.min(myPlayer.maxStamina, myPlayer.stamina + 0.2); // Regen 0.2 per frame
-                }
-
-                // Keyboard controls
-                if (keys['w'] || keys['arrowup']) dy -= MOVE_SPEED * currentSpeedModifier * sprintMultiplier;
-                if (keys['s'] || keys['arrowdown']) dy += MOVE_SPEED * currentSpeedModifier * sprintMultiplier;
-                if (keys['a'] || keys['arrowleft']) dx -= MOVE_SPEED * currentSpeedModifier * sprintMultiplier;
-                if (keys['d'] || keys['arrowright']) dx += MOVE_SPEED * currentSpeedModifier * sprintMultiplier;
-
-                // Mobile joystick controls
-                if (isMobile && joystickActive) {
-                    dx = (joystickDeltaX / 35) * MOVE_SPEED * currentSpeedModifier * sprintMultiplier;
-                    dy = (joystickDeltaY / 35) * MOVE_SPEED * currentSpeedModifier * sprintMultiplier;
-                }
-
-                // Normalize diagonal movement
-                if (dx !== 0 && dy !== 0) {
-                    const factor = 1 / Math.sqrt(2);
-                    dx *= factor;
-                    dy *= factor;
-                }
-
-                let newX = myPlayer.x + dx;
-                let newY = myPlayer.y + dy;
-
-                // Clamp to map bounds
-                newX = Math.max(Constants.PLAYER_SIZE, Math.min(Constants.MAP_WIDTH - Constants.PLAYER_SIZE, newX));
-                newY = Math.max(Constants.PLAYER_SIZE, Math.min(Constants.MAP_HEIGHT - Constants.PLAYER_SIZE, newY));
-
-                // Check obstacle collision with sliding
-                const checkCollision = (x, y) => {
-                    for (const obs of obstacles) {
-                        // Skip collision with open doors and debris
-                        if ((obs.isDoor && obs.isOpen) || obs.isWall === false || obs.blockType === 'debris') {
-                            continue;
-                        }
-
-                        const closestX = Math.max(obs.x, Math.min(x, obs.x + obs.width));
-                        const closestY = Math.max(obs.y, Math.min(y, obs.y + obs.height));
-                        const distX = x - closestX;
-                        const distY = y - closestY;
-                        if (distX * distX + distY * distY < Constants.PLAYER_SIZE * Constants.PLAYER_SIZE) {
-                            return true;
-                        }
-                    }
-                    return false;
-                };
-
-                // Try full movement
-                if (!checkCollision(newX, newY)) {
-                    myPlayer.x = newX;
-                    myPlayer.y = newY;
-                } else {
-                    // Try sliding on X axis
-                    if (!checkCollision(newX, myPlayer.y)) {
-                        myPlayer.x = newX;
-                    }
-                    // Try sliding on Y axis
-                    if (!checkCollision(myPlayer.x, newY)) {
-                        myPlayer.y = newY;
-                    }
-                }
+                playerController.update(terrain, obstacles);
 
                 // Check for nearby interactables on mobile
-                if (isMobile) {
-                    // Check for nearby door
+                if (playerController.isMobile) {
                     const nearbyDoor = obstacles.find(o =>
                         o.isDoor &&
                         Math.hypot(o.x + o.width/2 - myPlayer.x, o.y + o.height/2 - myPlayer.y) < 50
                     );
+
+                    const currentAbility = abilitySystem.getCurrentAbility();
+                    const abilityActive = abilitySystem.isAbilityActive();
 
                     if (nearbyDoor) {
                         nearbyInteractable = { type: 'door', id: nearbyDoor.id };
@@ -1789,95 +1254,11 @@
                     }
                 }
 
-                // Update angle
-                let aimX = mouse.x;
-                let aimY = mouse.y;
-
-                // Use aim joystick if active on mobile
-                if (isMobile && aimJoystickActive && (aimJoystickDeltaX !== 0 || aimJoystickDeltaY !== 0)) {
-                    // Aim joystick controls direction directly
-                    myPlayer.angle = Math.atan2(aimJoystickDeltaY, aimJoystickDeltaX);
-                } else if (isMobile && mobileAimX !== 0 && mobileAimY !== 0) {
-                    // Fallback to tap-to-aim
-                    aimX = mobileAimX;
-                    aimY = mobileAimY;
-                    const angleDx = aimX - myPlayer.x;
-                    const angleDy = aimY - myPlayer.y;
-                    myPlayer.angle = Math.atan2(angleDy, angleDx);
-                } else {
-                    // Desktop: aim at mouse
-                    const angleDx = aimX - myPlayer.x;
-                    const angleDy = aimY - myPlayer.y;
-                    myPlayer.angle = Math.atan2(angleDy, angleDx);
-                }
-
-                // Auto-fire when aim joystick is active
-                if (isMobile && aimJoystickActive && (aimJoystickDeltaX !== 0 || aimJoystickDeltaY !== 0)) {
-                    const now = Date.now();
-                    const weapon = WEAPONS[currentWeapon];
-
-                    // Check fire rate
-                    if (now - lastShot >= weapon.fireRate) {
-                        // Check ammo
-                        const currentAmmo = weaponAmmo[currentWeapon] ?? weapon.ammo;
-                        if (currentAmmo > 0) {
-                            lastShot = now;
-
-                            // Shoot in the direction of aim joystick
-                            const baseAngle = myPlayer.angle;
-                            const pellets = weapon.pellets || 1;
-                            const gunTipX = myPlayer.x + Math.cos(baseAngle) * 25;
-                            const gunTipY = myPlayer.y + Math.sin(baseAngle) * 25;
-
-                            for (let i = 0; i < pellets; i++) {
-                                const spread = weapon.spread * (Math.random() - 0.5) * 2;
-                                const angle = baseAngle + spread;
-
-                                const bulletId = 'b_' + playerId + '_' + Date.now() + '_' + Math.random();
-                                const vx = Math.cos(angle) * weapon.bulletSpeed;
-                                const vy = Math.sin(angle) * weapon.bulletSpeed;
-
-                                bullets.push({
-                                    id: bulletId,
-                                    x: gunTipX,
-                                    y: gunTipY,
-                                    vx,
-                                    vy,
-                                    playerId: playerId,
-                                    damage: weapon.damage,
-                                    size: weapon.bulletSize,
-                                    color: weapon.color,
-                                    explosive: weapon.explosive || false,
-                                    explosionRadius: weapon.explosionRadius,
-                                    penetration: weapon.penetration
-                                });
-
-                                network.send('shoot', {
-                                    bulletId,
-                                    x: gunTipX,
-                                    y: gunTipY,
-                                    vx,
-                                    vy,
-                                    damage: weapon.damage,
-                                    size: weapon.bulletSize,
-                                    color: weapon.color,
-                                    explosive: weapon.explosive || false,
-                                    explosionRadius: weapon.explosionRadius,
-                                    penetration: weapon.penetration
-                                });
-                            }
-
-                            // Decrease ammo
-                            if (weapon.ammo !== Infinity) {
-                                if (weaponAmmo[currentWeapon] === undefined) {
-                                    weaponAmmo[currentWeapon] = weapon.ammo;
-                                }
-                                weaponAmmo[currentWeapon]--;
-                            }
-                        } else {
-                            // Out of ammo, switch to pistol
-                            currentWeapon = 'pistol';
-                        }
+                // Auto-fire when aim joystick is active (uses WeaponSystem)
+                if (playerController.isAimJoystickActive()) {
+                    const newBullets = weaponSystem.autoFire();
+                    if (newBullets) {
+                        bullets.push(...newBullets);
                     }
                 }
 
@@ -1887,7 +1268,6 @@
                     const dy = myPlayer.y - pickup.y;
                     const dist = Math.sqrt(dx * dx + dy * dy);
                     if (dist < Constants.PLAYER_SIZE + 15) {
-                        // Only collect if we need it and haven't already sent
                         if (lastSentPickup.has(pickup.id)) return;
 
                         let canCollect = false;
@@ -1897,7 +1277,8 @@
                             canCollect = true;
                         } else if (pickup.type.startsWith('weapon_')) {
                             const weaponType = pickup.type.replace('weapon_', '');
-                            // Collect if we don't have it OR if we need ammo refill
+                            const currentWeapon = weaponSystem.getCurrentWeapon();
+
                             if (currentWeapon !== weaponType) {
                                 // Drop current weapon (except pistol)
                                 if (currentWeapon !== 'pistol') {
@@ -1914,26 +1295,12 @@
                                 canCollect = true;
                             } else {
                                 // Refill ammo for current weapon
-                                const weapon = Constants.WEAPONS[weaponType];
-                                if (weapon.ammo !== Infinity) {
-                                    weaponAmmo[weaponType] = weapon.ammo;
-                                    canCollect = true;
-                                }
-                            }
-                        } else if (pickup.type.startsWith('ability_')) {
-                            // Only collect if we don't have an ability
-                            if (!currentAbility) {
-                                const abilityType = pickup.type.replace('ability_', '');
-                                currentAbility = abilityType;
-                                const abilityNames = {
-                                    bladeswirl: 'Blade Swirl',
-                                    shield: 'Shield',
-                                    grapple: 'Grapple Hook'
-                                };
-                                document.getElementById('abilityName').textContent = abilityNames[abilityType] || abilityType;
-                                document.getElementById('abilityName').style.color = '#00ffff';
+                                weaponSystem.refillAmmo(weaponType);
                                 canCollect = true;
                             }
+                        } else if (pickup.type.startsWith('ability_')) {
+                            const abilityType = pickup.type.replace('ability_', '');
+                            canCollect = abilitySystem.pickupAbility(abilityType);
                         }
 
                         if (canCollect) {
@@ -1943,271 +1310,47 @@
                         }
                     }
                 });
-
-                // Send update to server (only if position/angle changed)
-                const now = Date.now();
-                if (now - lastUpdate > UPDATE_RATE) {
-                    const roundedX = Math.round(myPlayer.x);
-                    const roundedY = Math.round(myPlayer.y);
-                    const roundedAngle = Math.round(myPlayer.angle * 100) / 100;
-
-                    // Only send if changed significantly
-                    if (!myPlayer.lastSent ||
-                        Math.abs(roundedX - myPlayer.lastSent.x) > 1 ||
-                        Math.abs(roundedY - myPlayer.lastSent.y) > 1 ||
-                        Math.abs(roundedAngle - myPlayer.lastSent.angle) > 0.05) {
-
-                        pingStart = now;
-                        network.send('move', {
-                            x: roundedX,
-                            y: roundedY,
-                            angle: roundedAngle
-                        });
-
-                        myPlayer.lastSent = { x: roundedX, y: roundedY, angle: roundedAngle };
-                    }
-                    lastUpdate = now;
-                }
             }
 
-            // Update particles
-            particles = particles.filter(particle => {
-                particle.x += particle.vx;
-                particle.y += particle.vy;
-                particle.vx *= 0.95; // Friction
-                particle.vy *= 0.95;
-                particle.life -= 0.02;
-                particle.size *= 0.97;
-                return particle.life > 0;
-            });
+            // Update particles (uses ParticleSystem)
+            particleSystem.update();
 
-            // Update bullets and check collisions
-            bullets = bullets.filter(bullet => {
-                bullet.x += bullet.vx;
-                bullet.y += bullet.vy;
+            // Update bullets (uses PhysicsSystem)
+            bullets = physicsSystem.updateBullets(bullets, obstacles, players);
 
-                // Check obstacle collision
-                for (const obs of obstacles) {
-                    if (bullet.x >= obs.x && bullet.x <= obs.x + obs.width &&
-                        bullet.y >= obs.y && bullet.y <= obs.y + obs.height) {
+            // Update blade swirl ability (uses AbilitySystem)
+            abilitySystem.update(obstacles, players);
 
-                        // Check if bullet has penetration (sniper)
-                        if (bullet.penetration && bullet.penetration > 0) {
-                            // Track penetration count
-                            if (!bullet.penetrationCount) bullet.penetrationCount = 0;
-
-                            // Only damage if we haven't hit this block before
-                            if (!bullet.hitBlocks) bullet.hitBlocks = new Set();
-                            if (!bullet.hitBlocks.has(obs.id)) {
-                                bullet.hitBlocks.add(obs.id);
-                                bullet.penetrationCount++;
-
-                                // Send damage
-                                if (bullet.playerId === playerId) {
-                                    network.send('obstacleHit', {
-                                        obstacleId: obs.id,
-                                        damage: bullet.damage
-                                    });
-                                }
-
-                                // Create penetration particles
-                                for (let i = 0; i < 2; i++) {
-                                    particles.push({
-                                        x: bullet.x,
-                                        y: bullet.y,
-                                        vx: (Math.random() - 0.5) * 4,
-                                        vy: (Math.random() - 0.5) * 4,
-                                        size: 2 + Math.random() * 2,
-                                        life: 1.0,
-                                        color: '#9c27b0'
-                                    });
-                                }
-
-                                // Stop bullet if penetration limit reached
-                                if (bullet.penetrationCount >= bullet.penetration) {
-                                    bullet.hit = true;
-                                    break;
-                                }
-                            }
-                            // Continue bullet flight if still has penetration left
-                            continue;
-                        }
-
-                        // Handle rocket explosion
-                        if (bullet.explosive && bullet.playerId === playerId && !bullet.hitSent) {
-                            const explosionRadius = bullet.explosionRadius || 150;
-                            createExplosion(bullet.x, bullet.y, explosionRadius, 500, 100);
-                            bullet.hitSent = true;
-                        } else if (bullet.playerId === playerId && !bullet.hitSent) {
-                            // Normal bullet damage
-                            network.send('obstacleHit', {
-                                obstacleId: obs.id,
-                                damage: bullet.damage
-                            });
-                            bullet.hitSent = true;
-
-                            // Create fewer debris particles to reduce lag
-                            for (let i = 0; i < 3; i++) {
-                                particles.push({
-                                    x: bullet.x,
-                                    y: bullet.y,
-                                    vx: (Math.random() - 0.5) * 8,
-                                    vy: (Math.random() - 0.5) * 8,
-                                    size: 3 + Math.random() * 3,
-                                    life: 1.0,
-                                    color: '#00ffff'
-                                });
-                            }
-                        }
-
-                        bullet.hit = true;
-                        break;
-                    }
-                }
-
-                // Check if bullet hit any player (ONLY FOR MY BULLETS)
-                if (bullet.playerId === playerId && !bullet.hit) {
-                    Object.values(players).forEach(player => {
-                        if (player.id !== playerId && !bullet.hit) {
-                            // Skip if invulnerable
-                            if (player.invulnerable && Date.now() < player.invulnerableUntil) {
-                                return;
-                            }
-
-                            const dx = bullet.x - player.x;
-                            const dy = bullet.y - player.y;
-                            const distance = Math.sqrt(dx * dx + dy * dy);
-
-                            if (distance < Constants.PLAYER_SIZE + bullet.size) {
-                                // Hit! Check if explosive
-                                if (bullet.explosive) {
-                                    const explosionRadius = bullet.explosionRadius || 150;
-                                    createExplosion(bullet.x, bullet.y, explosionRadius, 500, 100);
-                                } else {
-                                    // Normal bullet damage
-                                    network.send('bulletHit', {
-                                        bulletId: bullet.id,
-                                        targetId: player.id,
-                                        damage: bullet.damage
-                                    });
-                                }
-
-                                // Mark bullet for removal
-                                bullet.hit = true;
-                            }
-                        }
-                    });
-                }
-
-                return !bullet.hit &&
-                       bullet.x >= 0 && bullet.x <= Constants.MAP_WIDTH &&
-                       bullet.y >= 0 && bullet.y <= Constants.MAP_HEIGHT;
-            });
-
-            // Update blade swirl ability (collision detection)
-            if (abilityActive && currentAbility === 'bladeswirl' && myPlayer) {
-                bladeAngle += 0.1; // Spin speed
-
-                blades.forEach((blade, index) => {
-                    const currentAngle = bladeAngle + blade.angle;
-                    const bladeX = myPlayer.x + Math.cos(currentAngle) * blade.radius;
-                    const bladeY = myPlayer.y + Math.sin(currentAngle) * blade.radius;
-
-                    // Check blade collisions with obstacles
-                    if (!blade.totalHits) blade.totalHits = 0;
-
-                    obstacles.forEach(obs => {
-                        const centerX = obs.x + obs.width / 2;
-                        const centerY = obs.y + obs.height / 2;
-                        const dx = bladeX - centerX;
-                        const dy = bladeY - centerY;
-                        const dist = Math.sqrt(dx * dx + dy * dy);
-
-                        if (dist < obs.width / 2 + 15) {
-                            // Hit obstacle!
-                            const now = Date.now();
-                            if (!blade.lastObstacleHit) blade.lastObstacleHit = {};
-                            if (!blade.lastObstacleHit[obs.id] || now - blade.lastObstacleHit[obs.id] > 200) {
-                                network.send('obstacleHit', {
-                                    obstacleId: obs.id,
-                                    damage: 20
-                                });
-                                blade.lastObstacleHit[obs.id] = now;
-                                blade.totalHits++;
-
-                                // If blade has hit 3 blocks, deactivate ability early
-                                if (blade.totalHits >= 3) {
-                                    abilityActive = false;
-                                    blades = [];
-                                    currentAbility = null;
-                                    document.getElementById('abilityName').textContent = 'None';
-                                    document.getElementById('abilityName').style.color = '#00ffff';
-                                }
-                            }
-                        }
-                    });
-
-                    // Check blade collisions with other players (with cooldown to prevent spam)
-                    Object.values(players).forEach(otherPlayer => {
-                        if (otherPlayer.id !== playerId && otherPlayer.health > 0) {
-                            const dx = bladeX - otherPlayer.x;
-                            const dy = bladeY - otherPlayer.y;
-                            const dist = Math.sqrt(dx * dx + dy * dy);
-
-                            if (dist < Constants.PLAYER_SIZE + 10) {
-                                // Hit! Send damage (with 500ms cooldown per player)
-                                const now = Date.now();
-                                if (!blade.lastHit) blade.lastHit = {};
-                                if (!blade.lastHit[otherPlayer.id] || now - blade.lastHit[otherPlayer.id] > 500) {
-                                    if (network.isConnected()) {
-                                        network.send('bulletHit', {
-                                            targetId: otherPlayer.id,
-                                            damage: 30
-                                        });
-                                        blade.lastHit[otherPlayer.id] = now;
-                                    }
-                                }
-                            }
-                        }
-                    });
-                });
-            }
-
-            // Update camera to follow player
-            if (myPlayer) {
-                cameraX = myPlayer.x - canvas.width / 2;
-                cameraY = myPlayer.y - canvas.height / 2;
-
-                // Clamp camera to map bounds
-                cameraX = Math.max(0, Math.min(Constants.MAP_WIDTH - canvas.width, cameraX));
-                cameraY = Math.max(0, Math.min(Constants.MAP_HEIGHT - canvas.height, cameraY));
-            }
+            // Update camera (uses PlayerController)
+            playerController.updateCamera();
+            const camera = playerController.getCamera();
 
             // === RENDERING PHASE ===
             // All rendering is now handled by the Renderer class (Phase 2 refactoring)
+            const toolSwingState = weaponSystem.getToolSwingState();
             renderer.render({
                 terrain,
                 floors,
                 obstacles,
                 buildings,
                 pickups,
-                particles,
+                particles: particleSystem.getParticles(),
                 bullets,
                 players,
                 myPlayer,
                 playerId,
-                currentTool,
-                currentWeapon,
-                toolSwingTime,
-                toolSwingDuration: 300,
-                blades,
-                bladeAngle,
-                abilityActive,
-                currentAbility,
+                currentTool: weaponSystem.getCurrentTool(),
+                currentWeapon: weaponSystem.getCurrentWeapon(),
+                toolSwingTime: toolSwingState.time,
+                toolSwingDuration: toolSwingState.duration,
+                blades: abilitySystem.getBlades(),
+                bladeAngle: abilitySystem.getBladeAngle(),
+                abilityActive: abilitySystem.isAbilityActive(),
+                currentAbility: abilitySystem.getCurrentAbility(),
                 fps,
                 ping,
                 minimapMinimized,
-                isMobile
+                isMobile: playerController.isMobile
             });
 
             // Update UI
